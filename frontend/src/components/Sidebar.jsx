@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import api from "../services/api";
 import { getSocket } from "../services/socket";
+import { decryptMessage } from "../utils/crypto";
 import SearchUsers from "./SearchUsers";
 import CreateGroup from "./CreateGroup";
 
@@ -47,6 +48,27 @@ function timeFmt(iso) {
   return d.toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
+async function getConversationPreview(convo) {
+  if (!convo?.last_message) return convo?.last_message;
+
+  if (typeof convo.last_message === "string" && convo.last_message.startsWith("audio:")) {
+    return "Voice message";
+  }
+
+  if (!convo.last_message_iv) return convo.last_message;
+
+  try {
+    return await decryptMessage(
+      convo.last_message,
+      convo.last_message_iv,
+      String(convo.id)
+    );
+  } catch (err) {
+    console.error("Failed to decrypt conversation preview:", err);
+    return "[Encrypted message]";
+  }
+}
+
 /* ─── Icons ──────────────────────────────────── */
 const SearchIcon = () => (
   <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -80,7 +102,13 @@ export default function Sidebar({ activeConversationId, onSelect, onLogout }) {
   const load = useCallback(async () => {
     try {
       const r = await api.get("/conversations");
-      setConvos(r.data);
+      const decryptedConvos = await Promise.all(
+        r.data.map(async (convo) => ({
+          ...convo,
+          last_message: await getConversationPreview(convo),
+        }))
+      );
+      setConvos(decryptedConvos);
     } catch {}
   }, []);
 
@@ -95,6 +123,13 @@ export default function Sidebar({ activeConversationId, onSelect, onLogout }) {
     const fn = () => load();
     s.on("receive_message", fn);
     return () => s.off("receive_message", fn);
+  }, [load]);
+
+  // Local sender path: refresh previews on our own outgoing message too.
+  useEffect(() => {
+    const fn = () => load();
+    window.addEventListener("chatty:message_sent", fn);
+    return () => window.removeEventListener("chatty:message_sent", fn);
   }, [load]);
 
   // Filter conversations by tab

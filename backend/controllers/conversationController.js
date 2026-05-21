@@ -84,13 +84,14 @@ export async function getUserConversations(req, res) {
         c.title,
         c.is_group,
         m.content AS last_message,
+        m.iv AS last_message_iv,
         m.created_at AS last_message_time,
         COUNT(msg.id) AS unread_count
       FROM conversations c
       JOIN conversation_members cm
       ON cm.conversation_id = c.id
       LEFT JOIN LATERAL (
-        SELECT content, created_at
+        SELECT content, iv, created_at
         FROM messages
         WHERE conversation_id = c.id
         ORDER BY created_at DESC
@@ -100,7 +101,7 @@ export async function getUserConversations(req, res) {
       ON msg.conversation_id = c.id
       AND msg.id > cm.last_read_message_id
       WHERE cm.user_id = $1
-      GROUP BY c.id, m.content, m.created_at
+      GROUP BY c.id, m.content, m.iv, m.created_at
       ORDER BY m.created_at DESC NULLS LAST
       `,
       [req.user.id]

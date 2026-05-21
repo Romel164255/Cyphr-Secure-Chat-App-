@@ -223,12 +223,43 @@ load
 
 useEffect(()=>{
 
-function onSent(e){
+async function onSent(e){
 
 const{
 plaintext,
 data
-}=e.detail;
+}=e.detail || {};
+
+if(
+!data
+) return;
+
+if(
+String(
+data.conversation_id ||
+data.conversationId
+)
+!==
+String(
+conversationId
+)
+) return;
+
+let nextMessage={
+...data,
+content:plaintext
+};
+
+if(
+typeof plaintext
+!=="string"
+){
+nextMessage=
+await tryDecrypt(
+data,
+conversationId
+);
+}
 
 setMessages(
 
@@ -240,10 +271,7 @@ prev=>
 
 {
 
-...data,
-
-content:
-plaintext
+...nextMessage
 
 }
 
@@ -273,7 +301,9 @@ onSent
 
 };
 
-},[]);
+},[
+conversationId
+]);
 
 
 /* ---------- Socket messages ---------- */
