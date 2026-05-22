@@ -3,6 +3,7 @@ import EmojiPicker from "emoji-picker-react";
 import api from "../services/api";
 import { getSocket } from "../services/socket";
 import { encryptMessage } from "../utils/crypto";
+import { IoMic, IoStop } from "react-icons/io5";
 
 const AUDIO_PAYLOAD_PREFIX = "audio-b64:";
 const MAX_RECORD_SECONDS = 60;
@@ -253,16 +254,20 @@ export default function MessageInput({ conversationId }) {
         />
 
         <button
-          style={{
-            ...s.audioBtn,
-            ...(recording ? s.audioBtnActive : {}),
-            opacity: sending ? 0.45 : 1,
-          }}
-          onClick={recording ? stopRecording : startRecording}
-          disabled={sending}
-          title={recording ? "Stop recording" : "Record voice message"}
-        >
-          {recording ? "■" : "🎤"}
+           style={{
+             ...s.audioBtn,
+                ...(recording ? s.audioBtnActive : {}),
+                opacity: sending ? 0.45 : 1,
+                }}
+                onClick={recording ? stopRecording : startRecording}
+                disabled={sending}
+                title={recording ? "Stop recording" : "Record voice message"}
+                 >
+                {recording ? (
+                <IoStop size={18} />
+                ) : (
+                <IoMic size={22} />
+                )}
         </button>
 
         <button
