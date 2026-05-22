@@ -219,6 +219,9 @@ export default function MessageList({
   const removeRef =
     useRef();
 
+  const menuRef =
+    useRef();
+
   async function deleteMessage(
     id
   ) {
@@ -446,6 +449,40 @@ export default function MessageList({
     messages
   ]);
 
+  useEffect(() => {
+
+  function handleOutsideClick(e) {
+
+    if (
+      menuRef.current &&
+      !menuRef.current.contains(
+        e.target
+      )
+    ) {
+
+      setMenuOpen(null);
+      setMenuBlur(false);
+
+    }
+
+  }
+
+  document.addEventListener(
+    "mousedown",
+    handleOutsideClick
+  );
+
+  return () => {
+
+    document.removeEventListener(
+      "mousedown",
+      handleOutsideClick
+    );
+
+  };
+
+  }, []);
+
   return(
 
     <div
@@ -495,9 +532,8 @@ export default function MessageList({
       isMine &&
 
       <div
-      style={
-        s.menuWrap
-      }
+      ref={menuRef}
+      style={s.menuWrap}
       >
 
       <button
@@ -677,4 +713,4 @@ textAlign:"right",
 color:"#888"
 }
 
-};
+};f
