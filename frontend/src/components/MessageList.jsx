@@ -22,22 +22,25 @@ function MessageContent({ content }) {
     content.startsWith(AUDIO_PAYLOAD_PREFIX)
   ) {
 
-    const encoded = content.slice(
-      AUDIO_PAYLOAD_PREFIX.length
-    );
+    const encoded =
+      content.slice(AUDIO_PAYLOAD_PREFIX.length);
 
     const marker = ";base64,";
-    const splitIndex = encoded.indexOf(marker);
+    const splitIndex =
+      encoded.indexOf(marker);
 
     if (splitIndex === -1) {
       return <span>[Invalid audio]</span>;
     }
 
     const mimeType =
-      encoded.slice(0, splitIndex) || "audio/webm";
+      encoded.slice(0, splitIndex)
+      || "audio/webm";
 
     const base64Data =
-      encoded.slice(splitIndex + marker.length);
+      encoded.slice(
+        splitIndex + marker.length
+      );
 
     return (
       <audio
@@ -46,7 +49,8 @@ function MessageContent({ content }) {
         style={{
           maxWidth: "100%",
           minWidth: 220,
-          outline: "none"
+          outline: "none",
+          paddingRight: 25
         }}
       />
     );
@@ -62,7 +66,8 @@ function MessageContent({ content }) {
         src={content.slice(6)}
         style={{
           maxWidth: "100%",
-          minWidth: 220
+          minWidth: 220,
+          paddingRight: 25
         }}
       />
     );
@@ -80,7 +85,10 @@ function MessageContent({ content }) {
   );
 }
 
-async function tryDecrypt(msg, conversationId) {
+async function tryDecrypt(
+  msg,
+  conversationId
+) {
 
   if (!msg.iv) return msg;
 
@@ -117,9 +125,14 @@ export default function MessageList({
   conversationId
 }) {
 
-  const [messages, setMessages] = useState([]);
-  const [menuOpen, setMenuOpen] = useState(null);
-  const [menuBlur, setMenuBlur] = useState(false);
+  const [messages, setMessages] =
+    useState([]);
+
+  const [menuOpen, setMenuOpen] =
+    useState(null);
+
+  const [menuBlur, setMenuBlur] =
+    useState(false);
 
   const myId = getMyId();
 
@@ -169,9 +182,7 @@ export default function MessageList({
 
     blurRef.current =
       setTimeout(() => {
-
         setMenuBlur(true);
-
       }, 270000);
 
     removeRef.current =
@@ -196,12 +207,11 @@ export default function MessageList({
 
         const decrypted =
           await Promise.all(
-            res.data.map(
-              msg =>
-                tryDecrypt(
-                  msg,
-                  convId
-                )
+            res.data.map(msg =>
+              tryDecrypt(
+                msg,
+                convId
+              )
             )
           );
 
@@ -221,7 +231,8 @@ export default function MessageList({
 
   useEffect(() => {
 
-    if (!conversationId) return;
+    if (!conversationId)
+      return;
 
     setMessages([]);
 
@@ -239,7 +250,8 @@ export default function MessageList({
     const socket =
       getSocket();
 
-    if (!socket) return;
+    if (!socket)
+      return;
 
     socket.emit(
       "join_conversation",
@@ -292,7 +304,7 @@ export default function MessageList({
 
     bottomRef.current
       ?.scrollIntoView({
-        behavior: "smooth"
+        behavior:"smooth"
       });
 
   }, [messages]);
@@ -317,17 +329,17 @@ export default function MessageList({
                   `tmp-${i}`
                 }
                 style={{
-                  display: "flex",
+                  display:"flex",
                   justifyContent:
                     isMine
-                      ? "flex-end"
-                      : "flex-start"
+                    ? "flex-end"
+                    : "flex-start",
+                  marginBottom:12
                 }}
               >
 
                 <div
                   style={{
-                    position: "relative",
                     ...s.bubble,
                     ...(isMine
                       ? s.bubbleMe
@@ -352,29 +364,32 @@ export default function MessageList({
 
                       {
 
-                        menuOpen===msg.id && (
+                        menuOpen ===
+                        msg.id && (
 
-                        <div
-                        style={{
-                          ...s.popup,
-                          ...(menuBlur
-                          ? s.popupBlur
-                          : {})
-                        }}
-                        >
-
-                          <button
-                          style={s.deleteBtn}
-                          onClick={() =>
-                            deleteMessage(
-                              msg.id
-                            )
-                          }
+                          <div
+                            style={{
+                              ...s.popup,
+                              ...(menuBlur
+                                ? s.popupBlur
+                                : {})
+                            }}
                           >
-                            Delete
-                          </button>
 
-                        </div>
+                            <button
+                              style={
+                                s.deleteBtn
+                              }
+                              onClick={() =>
+                                deleteMessage(
+                                  msg.id
+                                )
+                              }
+                            >
+                              Delete
+                            </button>
+
+                          </div>
 
                         )
 
@@ -401,7 +416,7 @@ export default function MessageList({
 
       }
 
-      <div ref={bottomRef} />
+      <div ref={bottomRef}/>
 
     </div>
 
@@ -412,57 +427,77 @@ export default function MessageList({
 const s = {
 
 list:{
-flex:1,
-overflowY:"auto",
-padding:"12px 16px"
+  flex:1,
+  overflowY:"auto",
+  padding:"12px 16px"
 },
 
 bubble:{
-padding:"10px",
-maxWidth:"70%",
-borderRadius:16
+  position:"relative",
+  padding:"10px 14px",
+  maxWidth:"70%",
+  borderRadius:16,
+  overflow:"visible"
 },
 
 bubbleMe:{
-background:"var(--bg-bubble-me)"
+  background:"var(--bg-bubble-me)",
+  marginRight:"35px"
 },
 
 bubbleThem:{
-background:"var(--bg-bubble-them)"
+  background:"var(--bg-bubble-them)"
 },
 
 menuWrap:{
-position:"absolute",
-top:4,
-right:4
+  position:"absolute",
+  top:"50%",
+  right:"-32px",
+  transform:"translateY(-50%)",
+  zIndex:100
 },
 
 menuBtn:{
-background:"none",
-fontSize:14,
-color:"var(--text-muted)"
+  background:"transparent",
+  border:"none",
+  fontSize:"18px",
+  cursor:"pointer",
+  width:"24px",
+  height:"24px",
+  borderRadius:"50%",
+  color:"var(--text-muted)"
 },
 
 popup:{
-position:"absolute",
-top:18,
-right:0,
-padding:6,
-background:"var(--bg-header)",
-border:"1px solid var(--border)",
-borderRadius:8
+  position:"absolute",
+  top:"32px",
+  right:0,
+  minWidth:"100px",
+  padding:6,
+  background:"var(--bg-header)",
+  border:"1px solid var(--border)",
+  borderRadius:10,
+  boxShadow:
+    "0 4px 12px rgba(0,0,0,.25)",
+  zIndex:9999
 },
 
 popupBlur:{
-filter:"blur(3px)",
-opacity:.3,
-pointerEvents:"none",
-transition:"all 1.5s"
+  filter:"blur(3px)",
+  opacity:.3,
+  pointerEvents:"none",
+  transition:"all 1.5s"
 },
 
 deleteBtn:{
-background:"none",
-color:"#ff6666"
+  width:"100%",
+  padding:"8px",
+  background:"transparent",
+  border:"none",
+  cursor:"pointer",
+  textAlign:"left",
+  color:"#ff6666",
+  borderRadius:6
 }
 
 };
