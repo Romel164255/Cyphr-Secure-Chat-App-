@@ -1,9 +1,11 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import api from "../services/api";
 import { getSocket } from "../services/socket";
-import { decryptMessage } from "../utils/crypto";
+import { decryptMessageWithFallback } from "../utils/crypto";
 import SearchUsers from "./SearchUsers";
 import CreateGroup from "./CreateGroup";
+
+const AUDIO_PAYLOAD_PREFIX = "audio-b64:";
 
 /* ─── Avatar ─────────────────────────────────── */
 export function Avatar({ name = "?", size = 40, isGroup = false }) {
@@ -51,18 +53,33 @@ function timeFmt(iso) {
 async function getConversationPreview(convo) {
   if (!convo?.last_message) return convo?.last_message;
 
-  if (typeof convo.last_message === "string" && convo.last_message.startsWith("audio:")) {
+  if (
+    typeof convo.last_message === "string" &&
+    (convo.last_message.startsWith("audio:") || convo.last_message.startsWith(AUDIO_PAYLOAD_PREFIX))
+  ) {
     return "Voice message";
   }
 
   if (!convo.last_message_iv) return convo.last_message;
 
   try {
-    return await decryptMessage(
+    const decrypted = await decryptMessageWithFallback(
       convo.last_message,
       convo.last_message_iv,
-      String(convo.id)
+      [
+        convo.id,
+        convo.conversation_id
+      ]
     );
+
+    if (
+      typeof decrypted === "string" &&
+      (decrypted.startsWith("audio:") || decrypted.startsWith(AUDIO_PAYLOAD_PREFIX))
+    ) {
+      return "Voice message";
+    }
+
+    return decrypted;
   } catch (err) {
     console.error("Failed to decrypt conversation preview:", err);
     return "[Encrypted message]";

@@ -81,7 +81,11 @@ export async function getUserConversations(req, res) {
       `
       SELECT
         c.id,
-        c.title,
+        CASE
+          WHEN c.is_group
+          THEN c.title
+          ELSE COALESCE(other_user.display_name, other_user.username, 'Direct Chat')
+        END AS title,
         c.is_group,
         m.content AS last_message,
         m.iv AS last_message_iv,
@@ -90,6 +94,16 @@ export async function getUserConversations(req, res) {
       FROM conversations c
       JOIN conversation_members cm
       ON cm.conversation_id = c.id
+      LEFT JOIN LATERAL (
+        SELECT u.id, u.username, u.display_name
+        FROM conversation_members cm2
+        JOIN users u
+        ON u.id = cm2.user_id
+        WHERE cm2.conversation_id = c.id
+        AND cm2.user_id <> $1
+        LIMIT 1
+      ) other_user
+      ON c.is_group = false
       LEFT JOIN LATERAL (
         SELECT content, iv, created_at
         FROM messages
@@ -101,7 +115,15 @@ export async function getUserConversations(req, res) {
       ON msg.conversation_id = c.id
       AND msg.id > cm.last_read_message_id
       WHERE cm.user_id = $1
-      GROUP BY c.id, m.content, m.iv, m.created_at
+      GROUP BY
+        c.id,
+        c.is_group,
+        c.title,
+        other_user.display_name,
+        other_user.username,
+        m.content,
+        m.iv,
+        m.created_at
       ORDER BY m.created_at DESC NULLS LAST
       `,
       [req.user.id]

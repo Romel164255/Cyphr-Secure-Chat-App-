@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import api from "../services/api";
 import { getSocket } from "../services/socket";
-import { decryptMessage } from "../utils/crypto";
+import { decryptMessageWithFallback } from "../utils/crypto";
+
+const AUDIO_PAYLOAD_PREFIX = "audio-b64:";
 
 function getMyId() {
   try {
@@ -20,6 +22,35 @@ function getMyId() {
 /* ---------- Message Content ---------- */
 
 function MessageContent({ content }) {
+
+  if (
+    typeof content === "string" &&
+    content.startsWith(AUDIO_PAYLOAD_PREFIX)
+  ) {
+    const encoded = content.slice(AUDIO_PAYLOAD_PREFIX.length);
+    const marker = ";base64,";
+    const splitIndex = encoded.indexOf(marker);
+
+    if (splitIndex === -1) {
+      return <span>[Invalid audio message]</span>;
+    }
+
+    const mimeType = encoded.slice(0, splitIndex) || "audio/webm";
+    const base64Data = encoded.slice(splitIndex + marker.length);
+    const src = `data:${mimeType};base64,${base64Data}`;
+
+    return (
+      <audio
+        controls
+        src={src}
+        style={{
+          maxWidth: "100%",
+          minWidth: 220,
+          outline: "none"
+        }}
+      />
+    );
+  }
 
   if (
     typeof content === "string" &&
@@ -73,25 +104,17 @@ async function tryDecrypt(
 
   try{
 
-    const actualConversationId=
-
-    String(
-
-      msg.conversation_id ||
-
-      msg.conversationId ||
-
-      conversationId
-
-    );
-
     const decrypted=
 
-    await decryptMessage(
+    await decryptMessageWithFallback(
 
       msg.content,
       msg.iv,
-      actualConversationId
+      [
+        msg.conversation_id,
+        msg.conversationId,
+        conversationId
+      ]
 
     );
 

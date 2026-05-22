@@ -11,7 +11,9 @@ const keyCache = new Map();
  * the browser.
  */
 async function deriveConversationKey(conversationId) {
-    if (keyCache.has(conversationId)) return keyCache.get(conversationId);
+    const normalizedConversationId = String(conversationId);
+
+    if (keyCache.has(normalizedConversationId)) return keyCache.get(normalizedConversationId);
 
     const enc = new TextEncoder();
 
@@ -26,7 +28,7 @@ async function deriveConversationKey(conversationId) {
     const key = await crypto.subtle.deriveKey(
         {
             name: "PBKDF2",
-            salt: enc.encode(conversationId),   // conversation-specific salt
+            salt: enc.encode(normalizedConversationId),   // conversation-specific salt
             iterations: 100_000,
             hash: "SHA-256",
         },
@@ -36,7 +38,7 @@ async function deriveConversationKey(conversationId) {
         ["encrypt", "decrypt"]
     );
 
-    keyCache.set(conversationId, key);
+    keyCache.set(normalizedConversationId, key);
     return key;
 }
 
@@ -45,6 +47,10 @@ async function deriveConversationKey(conversationId) {
  * Returns { ciphertext, iv } — both base64-encoded strings safe for JSON/DB.
  */
 export async function encryptMessage(message, conversationId) {
+    if (conversationId === undefined || conversationId === null || conversationId === "") {
+        throw new Error("conversationId is required for encryption");
+    }
+
     const key = await deriveConversationKey(conversationId);
 
     const iv = crypto.getRandomValues(new Uint8Array(12));
@@ -78,4 +84,38 @@ export async function decryptMessage(ciphertext, iv, conversationId) {
     );
 
     return new TextDecoder().decode(decrypted);
+}
+
+/**
+ * Tries multiple conversation IDs so legacy messages (encrypted with an older
+ * salt value) can still be recovered.
+ */
+export async function decryptMessageWithFallback(ciphertext, iv, conversationIds = []) {
+    const candidates = Array.isArray(conversationIds)
+        ? conversationIds
+        : [conversationIds];
+
+    const orderedUniqueCandidates = Array.from(
+        new Set(
+            [
+                ...candidates
+                    .filter((id) => id !== undefined && id !== null && String(id).trim() !== "")
+                    .map((id) => String(id)),
+                "undefined",
+                "null",
+            ]
+        )
+    );
+
+    let lastError = null;
+
+    for (const candidate of orderedUniqueCandidates) {
+        try {
+            return await decryptMessage(ciphertext, iv, candidate);
+        } catch (err) {
+            lastError = err;
+        }
+    }
+
+    throw lastError || new Error("Unable to decrypt message");
 }

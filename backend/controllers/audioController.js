@@ -1,86 +1,93 @@
-import { v2 as cloudinary } from "cloudinary";
-import streamifier from "streamifier";
+import crypto from "crypto";
 import { pool } from "../db.js";
 
-/* ─────────────────────────────
-   Cloudinary config
-   Make sure these are in your .env:
-     CLOUDINARY_CLOUD_NAME
-     CLOUDINARY_API_KEY
-     CLOUDINARY_API_SECRET
-───────────────────────────── */
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key:    process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
+const MAX_AUDIO_PAYLOAD_LENGTH = 1_800_000;
 
-/* ─────────────────────────────
-   Helper — stream buffer → Cloudinary
-───────────────────────────── */
-function uploadToCloudinary(buffer) {
-  return new Promise((resolve, reject) => {
-    const stream = cloudinary.uploader.upload_stream(
-      {
-        resource_type: "video",   // Cloudinary uses "video" for audio files
-        folder: "rchat_audio",
-        format: "webm",
-        // Optional: auto-delete after 30 days to save storage
-        // invalidate: true,
-      },
-      (error, result) => {
-        if (error) return reject(error);
-        resolve(result);
-      }
-    );
-    streamifier.createReadStream(buffer).pipe(stream);
-  });
+async function isMember(userId, conversationId) {
+  const result = await pool.query(
+    `
+    SELECT 1
+    FROM conversation_members
+    WHERE user_id = $1
+    AND conversation_id = $2
+    `,
+    [userId, conversationId]
+  );
+
+  return result.rows.length > 0;
 }
 
 /* ─────────────────────────────
    POST /audio/upload
-   — Uploads the audio blob to Cloudinary
-   — Saves a message row with content = "audio:<url>"
-   — Returns the full message object (same shape as sendMessage)
+   Body JSON:
+     conversation_id, content (ciphertext), iv
+   — Stores encrypted audio payload directly in DB (no Cloudinary)
 ───────────────────────────── */
 export async function uploadAudio(req, res) {
   try {
-    // multer puts the file on req.file
-    if (!req.file) {
-      return res.status(400).json({ error: "No audio file received" });
+    const { conversation_id, content, iv } = req.body;
+
+    if (!conversation_id || !content || !iv) {
+      return res.status(400).json({ error: "conversation_id, content, iv required" });
     }
 
-    const { conversation_id } = req.body;
-    if (!conversation_id) {
-      return res.status(400).json({ error: "conversation_id is required" });
+    if (content.length > MAX_AUDIO_PAYLOAD_LENGTH) {
+      return res.status(400).json({
+        error: `Audio payload too large (max ${MAX_AUDIO_PAYLOAD_LENGTH} chars)`,
+      });
     }
 
-    const senderId = req.user.id;
+    const member = await isMember(req.user.id, conversation_id);
+    if (!member) {
+      return res.status(403).json({ error: "Not a member" });
+    }
 
-    /* 1. Upload to Cloudinary */
-    const cloudinaryResult = await uploadToCloudinary(req.file.buffer);
-    const audioUrl = cloudinaryResult.secure_url;
+    const messageId = crypto.randomUUID();
 
-    /* 2. Save message to DB with "audio:" prefix so the frontend can detect it */
-    const content = `audio:${audioUrl}`;
-
-    const { rows } = await pool.query(
-      `INSERT INTO messages (conversation_id, sender_id, content, status)
-       VALUES ($1, $2, $3, 'sent')
-       RETURNING id, conversation_id, sender_id, content, status, created_at`,
-      [conversation_id, senderId, content]
-    );
-
-    const message = rows[0];
-
-    /* 3. Update conversation's updated_at so it bubbles to top of sidebar */
     await pool.query(
-      `UPDATE conversations SET updated_at = NOW() WHERE id = $1`,
-      [conversation_id]
+      `
+      INSERT INTO messages
+      (
+        id,
+        conversation_id,
+        sender_id,
+        content,
+        iv,
+        status
+      )
+      VALUES
+      (
+        $1,
+        $2,
+        $3,
+        $4,
+        $5,
+        'sent'
+      )
+      `,
+      [messageId, conversation_id, req.user.id, content, iv]
     );
 
-    return res.status(201).json(message);
+    const result = await pool.query(
+      `
+      SELECT
+        m.id,
+        m.conversation_id,
+        m.sender_id,
+        m.content,
+        m.iv,
+        m.status,
+        m.created_at,
+        COALESCE(u.display_name, u.username) AS sender_name
+      FROM messages m
+      JOIN users u
+      ON u.id = m.sender_id
+      WHERE m.id = $1
+      `,
+      [messageId]
+    );
 
+    return res.status(201).json(result.rows[0]);
   } catch (err) {
     console.error("Audio upload error:", err);
     return res.status(500).json({ error: "Audio upload failed" });
