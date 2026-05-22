@@ -20,20 +20,13 @@ function getMyId() {
 }
 
 function formatTime(timestamp) {
+  if (!timestamp) return "";
 
-  if (!timestamp)
-    return "";
-
-  return new Date(
-    timestamp
-  ).toLocaleTimeString(
-    [],
-    {
+  return new Date(timestamp)
+    .toLocaleTimeString([], {
       hour: "2-digit",
       minute: "2-digit"
-    }
-  );
-
+    });
 }
 
 function MessageContent({
@@ -44,22 +37,20 @@ function MessageContent({
   if (deleted) {
 
     return (
-
       <span
         style={{
-          fontStyle: "italic",
-          color: "#888"
+          fontStyle:"italic",
+          color:"#888"
         }}
       >
         🚫 This message was deleted
       </span>
-
     );
 
   }
 
   if (
-    typeof content === "string" &&
+    typeof content==="string" &&
     content.startsWith(
       AUDIO_PAYLOAD_PREFIX
     )
@@ -74,9 +65,13 @@ function MessageContent({
       ";base64,";
 
     const splitIndex =
-      encoded.indexOf(marker);
+      encoded.indexOf(
+        marker
+      );
 
-    if (splitIndex === -1) {
+    if (
+      splitIndex===-1
+    ) {
 
       return (
         <span>
@@ -104,9 +99,8 @@ function MessageContent({
         controls
         src={`data:${mimeType};base64,${base64Data}`}
         style={{
-          maxWidth: "100%",
-          minWidth: 220,
-          paddingRight: 25
+          maxWidth:"100%",
+          minWidth:220
         }}
       />
 
@@ -115,7 +109,7 @@ function MessageContent({
   }
 
   if (
-    typeof content === "string" &&
+    typeof content==="string" &&
     content.startsWith(
       "audio:"
     )
@@ -127,9 +121,8 @@ function MessageContent({
         controls
         src={content.slice(6)}
         style={{
-          maxWidth: "100%",
-          minWidth: 220,
-          paddingRight: 25
+          maxWidth:"100%",
+          minWidth:220
         }}
       />
 
@@ -141,15 +134,11 @@ function MessageContent({
 
     <span
       style={{
-        whiteSpace:
-          "pre-wrap",
-        wordBreak:
-          "break-word"
+        whiteSpace:"pre-wrap",
+        wordBreak:"break-word"
       }}
     >
-
       {content}
-
     </span>
 
   );
@@ -178,16 +167,16 @@ async function tryDecrypt(
       );
 
     return {
-        ...msg,
-        content: decrypted
-      };
+      ...msg,
+      content:decrypted
+    };
 
   } catch {
 
     return {
       ...msg,
       content:
-        "[Failed to decrypt]"
+      "[Failed to decrypt]"
     };
 
   }
@@ -198,14 +187,20 @@ export default function MessageList({
   conversationId
 }) {
 
-  const [messages,setMessages] =
-    useState([]);
+  const [
+    messages,
+    setMessages
+  ] = useState([]);
 
-  const [menuOpen,setMenuOpen] =
-    useState(null);
+  const [
+    menuOpen,
+    setMenuOpen
+  ] = useState(null);
 
-  const [menuBlur,setMenuBlur] =
-    useState(false);
+  const [
+    menuBlur,
+    setMenuBlur
+  ] = useState(false);
 
   const myId =
     getMyId();
@@ -213,14 +208,8 @@ export default function MessageList({
   const bottomRef =
     useRef();
 
-  const blurRef =
-    useRef();
-
-  const removeRef =
-    useRef();
-
   const menuRef =
-    useRef();
+    useRef(null);
 
   async function deleteMessage(
     id
@@ -238,19 +227,18 @@ export default function MessageList({
         prev.map(
           msg =>
 
-          msg.id === id
+          msg.id===id
 
           ? {
 
-              ...msg,
-              deleted:true,
-              content:
-              "This message was deleted"
+            ...msg,
+            deleted:true,
+            content:
+            "This message was deleted"
 
-            }
+          }
 
           : msg
-
         )
 
       );
@@ -259,9 +247,7 @@ export default function MessageList({
         null
       );
 
-    }
-
-    catch(err){
+    } catch(err){
 
       console.error(
         err
@@ -273,52 +259,22 @@ export default function MessageList({
 
   function toggleMenu(
     id
-  ){
-
-    clearTimeout(
-      blurRef.current
-    );
-
-    clearTimeout(
-      removeRef.current
-    );
+  ) {
 
     setMenuOpen(
-      id
+      prev =>
+      prev===id
+      ? null
+      : id
     );
-
-    setMenuBlur(
-      false
-    );
-
-    blurRef.current=
-    setTimeout(()=>{
-
-      setMenuBlur(
-        true
-      );
-
-    },270000);
-
-    removeRef.current=
-    setTimeout(()=>{
-
-      setMenuOpen(
-        null
-      );
-
-      setMenuBlur(
-        false
-      );
-
-    },300000);
 
   }
 
   const load=
   useCallback(
-
-  async(convId)=>{
+  async(
+    convId
+  )=>{
 
     try{
 
@@ -331,7 +287,7 @@ export default function MessageList({
       await Promise.all(
 
         res.data.map(
-          msg=>
+          msg =>
           tryDecrypt(
             msg,
             convId
@@ -344,8 +300,7 @@ export default function MessageList({
         decrypted
       );
 
-    }
-    catch(err){
+    }catch(err){
 
       console.error(
         err
@@ -359,8 +314,7 @@ export default function MessageList({
 
     if(
       !conversationId
-    )
-    return;
+    ) return;
 
     setMessages([]);
 
@@ -380,8 +334,7 @@ export default function MessageList({
 
     if(
       !socket
-    )
-    return;
+    ) return;
 
     socket.emit(
       "join_conversation",
@@ -393,13 +346,19 @@ export default function MessageList({
     ){
 
       if(
-        String(
-          data.conversation_id
-        ) !==
-        String(
-          conversationId
-        )
+
+      String(
+      data.conversation_id
       )
+
+      !==
+
+      String(
+      conversationId
+      )
+
+      )
+
       return;
 
       const decrypted=
@@ -439,55 +398,60 @@ export default function MessageList({
 
     bottomRef.current
     ?.scrollIntoView({
-
-      behavior:
-      "smooth"
-
+      behavior:"smooth"
     });
 
   },[
     messages
   ]);
 
-  useEffect(() => {
+  useEffect(()=>{
 
-  function handleOutsideClick(e) {
+    function handleOutsideClick(
+      e
+    ){
 
-    if (
+      if(
+
+      menuOpen!==null &&
+
       menuRef.current &&
+
       !menuRef.current.contains(
         e.target
       )
-    ) {
 
-      setMenuOpen(null);
-      setMenuBlur(false);
+      ){
+
+        setMenuOpen(
+          null
+        );
+
+      }
 
     }
 
-  }
-
-  document.addEventListener(
-    "mousedown",
-    handleOutsideClick
-  );
-
-  return () => {
-
-    document.removeEventListener(
+    document.addEventListener(
       "mousedown",
       handleOutsideClick
     );
 
-  };
+    return()=>{
 
-  }, []);
+      document.removeEventListener(
+        "mousedown",
+        handleOutsideClick
+      );
 
-  return(
+    };
 
-    <div
-      style={s.list}
-    >
+  },[
+    menuOpen
+  ]);
+
+  return (
+
+    <div style={s.list}>
 
       {
 
@@ -506,7 +470,7 @@ export default function MessageList({
       <div
       key={
         msg.id ||
-        `tmp-${i}`
+        i
       }
       style={{
         display:"flex",
@@ -532,19 +496,20 @@ export default function MessageList({
       isMine &&
 
       <div
-      ref={menuRef}
+      ref={
+        menuOpen===msg.id
+        ? menuRef
+        : null
+      }
       style={s.menuWrap}
       >
 
       <button
-      style={
-        s.menuBtn
-      }
+      style={s.menuBtn}
       onClick={()=>
       toggleMenu(
         msg.id
-      )
-      }
+      )}
       >
 
       ⋮
@@ -553,31 +518,25 @@ export default function MessageList({
 
       {
 
-      menuOpen===
-      msg.id &&
+      menuOpen===msg.id &&
 
       <div
       style={{
-      ...s.popup,
-      ...(menuBlur
-      ? s.popupBlur
-      : {})
+        ...s.popup,
+        ...(menuBlur
+        ? s.popupBlur
+        : {})
       }}
       >
 
       <button
-      style={
-      s.deleteBtn
-      }
+      style={s.deleteBtn}
       onClick={()=>
       deleteMessage(
-      msg.id
-      )
-      }
+        msg.id
+      )}
       >
-
       Delete
-
       </button>
 
       </div>
@@ -591,25 +550,17 @@ export default function MessageList({
       <div>
 
       <MessageContent
-      content={
-      msg.content
-      }
-      deleted={
-      msg.deleted
-      }
+      content={msg.content}
+      deleted={msg.deleted}
       />
 
-      <div
-      style={s.time}
-      >
-
+      <div style={s.time}>
       {
       formatTime(
       msg.created_at ||
       msg.createdAt
       )
       }
-
       </div>
 
       </div>
@@ -632,7 +583,7 @@ export default function MessageList({
 
 }
 
-const s={
+const s = {
 
 list:{
 flex:1,
@@ -661,8 +612,7 @@ menuWrap:{
 position:"absolute",
 top:"50%",
 right:"-32px",
-transform:"translateY(-50%)",
-zIndex:100
+transform:"translateY(-50%)"
 },
 
 menuBtn:{
@@ -670,39 +620,24 @@ background:"transparent",
 border:"none",
 fontSize:"18px",
 cursor:"pointer",
-width:"24px",
-height:"24px",
-borderRadius:"50%",
 color:"var(--text-muted)"
 },
 
 popup:{
 position:"absolute",
-top:"32px",
+top:"30px",
 right:0,
-minWidth:"100px",
 padding:6,
 background:"var(--bg-header)",
 border:"1px solid var(--border)",
 borderRadius:10,
-boxShadow:
-"0 4px 12px rgba(0,0,0,.25)",
-zIndex:9999
-},
-
-popupBlur:{
-filter:"blur(3px)",
-opacity:.3,
-pointerEvents:"none"
+zIndex:999
 },
 
 deleteBtn:{
-width:"100%",
-padding:"8px",
 background:"transparent",
 border:"none",
 cursor:"pointer",
-textAlign:"left",
 color:"#ff6666"
 },
 
@@ -713,4 +648,4 @@ textAlign:"right",
 color:"#888"
 }
 
-};f
+};
