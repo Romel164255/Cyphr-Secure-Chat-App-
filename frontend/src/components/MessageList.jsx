@@ -8,18 +8,12 @@ const AUDIO_PAYLOAD_PREFIX = "audio-b64:";
 function getMyId() {
   try {
     return JSON.parse(
-      atob(
-        localStorage
-          .getItem("token")
-          .split(".")[1]
-      )
+      atob(localStorage.getItem("token").split(".")[1])
     ).id;
   } catch {
     return null;
   }
 }
-
-/* ---------- Message Content ---------- */
 
 function MessageContent({ content }) {
 
@@ -27,22 +21,28 @@ function MessageContent({ content }) {
     typeof content === "string" &&
     content.startsWith(AUDIO_PAYLOAD_PREFIX)
   ) {
-    const encoded = content.slice(AUDIO_PAYLOAD_PREFIX.length);
+
+    const encoded = content.slice(
+      AUDIO_PAYLOAD_PREFIX.length
+    );
+
     const marker = ";base64,";
     const splitIndex = encoded.indexOf(marker);
 
     if (splitIndex === -1) {
-      return <span>[Invalid audio message]</span>;
+      return <span>[Invalid audio]</span>;
     }
 
-    const mimeType = encoded.slice(0, splitIndex) || "audio/webm";
-    const base64Data = encoded.slice(splitIndex + marker.length);
-    const src = `data:${mimeType};base64,${base64Data}`;
+    const mimeType =
+      encoded.slice(0, splitIndex) || "audio/webm";
+
+    const base64Data =
+      encoded.slice(splitIndex + marker.length);
 
     return (
       <audio
         controls
-        src={src}
+        src={`data:${mimeType};base64,${base64Data}`}
         style={{
           maxWidth: "100%",
           minWidth: 220,
@@ -56,92 +56,57 @@ function MessageContent({ content }) {
     typeof content === "string" &&
     content.startsWith("audio:")
   ) {
-
     return (
-
       <audio
         controls
         src={content.slice(6)}
         style={{
-          maxWidth:"100%",
-          minWidth:220,
-          outline:"none"
+          maxWidth: "100%",
+          minWidth: 220
         }}
       />
-
     );
-
   }
 
   return (
-
     <span
       style={{
-        whiteSpace:"pre-wrap",
-        wordBreak:"break-word"
+        whiteSpace: "pre-wrap",
+        wordBreak: "break-word"
       }}
     >
-
       {content}
-
     </span>
-
   );
-
 }
 
-/* ---------- Decrypt helper ---------- */
+async function tryDecrypt(msg, conversationId) {
 
-async function tryDecrypt(
-  msg,
-  conversationId
-){
+  if (!msg.iv) return msg;
 
-  // legacy or audio messages
-  if(!msg.iv){
-    return msg;
-  }
+  try {
 
-  try{
+    const decrypted =
+      await decryptMessageWithFallback(
+        msg.content,
+        msg.iv,
+        [
+          msg.conversation_id,
+          msg.conversationId,
+          conversationId
+        ]
+      );
 
-    const decrypted=
-
-    await decryptMessageWithFallback(
-
-      msg.content,
-      msg.iv,
-      [
-        msg.conversation_id,
-        msg.conversationId,
-        conversationId
-      ]
-
-    );
-
-    return{
-
+    return {
       ...msg,
-
-      content:decrypted
-
+      content: decrypted
     };
 
-  }
-  catch(err){
+  } catch {
 
-    console.error(
-      "decrypt error",
-      err,
-      msg
-    );
-
-    return{
-
+    return {
       ...msg,
-
-      content:
-      "[Failed to decrypt]"
-
+      content: "[Failed to decrypt]"
     };
 
   }
@@ -149,448 +114,355 @@ async function tryDecrypt(
 }
 
 export default function MessageList({
+  conversationId
+}) {
 
-conversationId
+  const [messages, setMessages] = useState([]);
+  const [menuOpen, setMenuOpen] = useState(null);
+  const [menuBlur, setMenuBlur] = useState(false);
 
-}){
+  const myId = getMyId();
 
-const[
-messages,
-setMessages
-]=useState([]);
+  const bottomRef = useRef();
+  const blurRef = useRef();
+  const removeRef = useRef();
 
-const myId=
-getMyId();
+  async function deleteMessage(id) {
 
-const bottomRef=
-useRef();
+    try {
 
+      await api.delete(
+        `/messages/${id}`
+      );
 
-/* ---------- Load history ---------- */
+      setMessages(prev =>
+        prev.filter(
+          msg => msg.id !== id
+        )
+      );
 
-const load=
+      setMenuOpen(null);
 
-useCallback(
+    } catch (err) {
 
-async(
-convId
-)=>{
+      console.error(
+        "Delete failed",
+        err
+      );
 
-try{
+    }
 
-const res=
+  }
 
-await api.get(
-`/messages/${convId}`
-);
+  function toggleMenu(id) {
 
-const decrypted=
+    clearTimeout(
+      blurRef.current
+    );
 
-await Promise.all(
+    clearTimeout(
+      removeRef.current
+    );
 
-res.data.map(
+    setMenuOpen(id);
+    setMenuBlur(false);
 
-msg=>
+    blurRef.current =
+      setTimeout(() => {
 
-tryDecrypt(
-msg,
-convId
-)
+        setMenuBlur(true);
 
-)
+      }, 270000);
 
-);
+    removeRef.current =
+      setTimeout(() => {
 
-setMessages(
-decrypted
-);
+        setMenuOpen(null);
+        setMenuBlur(false);
 
-}
-catch(err){
+      }, 300000);
 
-console.error(
-"load messages",
-err
-);
+  }
 
-}
+  const load = useCallback(
+    async (convId) => {
 
-},
-[]
+      try {
 
-);
+        const res =
+          await api.get(
+            `/messages/${convId}`
+          );
 
+        const decrypted =
+          await Promise.all(
+            res.data.map(
+              msg =>
+                tryDecrypt(
+                  msg,
+                  convId
+                )
+            )
+          );
 
-/* ---------- Change conversation ---------- */
+        setMessages(
+          decrypted
+        );
 
-useEffect(()=>{
+      } catch (err) {
 
-if(
-!conversationId
-)return;
+        console.error(err);
 
-setMessages([]);
+      }
 
-load(
-conversationId
-);
+    },
+    []
+  );
 
-},
-[
-conversationId,
-load
-]);
+  useEffect(() => {
 
+    if (!conversationId) return;
 
-/* ---------- Own sent ---------- */
+    setMessages([]);
 
-useEffect(()=>{
+    load(
+      conversationId
+    );
 
-async function onSent(e){
+  }, [
+    conversationId,
+    load
+  ]);
 
-const{
-plaintext,
-data
-}=e.detail || {};
+  useEffect(() => {
 
-if(
-!data
-) return;
+    const socket =
+      getSocket();
 
-if(
-String(
-data.conversation_id ||
-data.conversationId
-)
-!==
-String(
-conversationId
-)
-) return;
+    if (!socket) return;
 
-let nextMessage={
-...data,
-content:plaintext
-};
+    socket.emit(
+      "join_conversation",
+      conversationId
+    );
 
-if(
-typeof plaintext
-!=="string"
-){
-nextMessage=
-await tryDecrypt(
-data,
-conversationId
-);
-}
+    async function onMessage(data) {
 
-setMessages(
+      if (
+        String(
+          data.conversation_id
+        ) !==
+        String(
+          conversationId
+        )
+      ) return;
 
-prev=>
+      const decrypted =
+        await tryDecrypt(
+          data,
+          conversationId
+        );
 
-[
+      setMessages(
+        prev => [
+          ...prev,
+          decrypted
+        ]
+      );
+
+    }
+
+    socket.on(
+      "receive_message",
+      onMessage
+    );
+
+    return () => {
 
-...prev,
+      socket.off(
+        "receive_message",
+        onMessage
+      );
 
-{
+    };
 
-...nextMessage
+  }, [conversationId]);
 
-}
+  useEffect(() => {
 
-]
+    bottomRef.current
+      ?.scrollIntoView({
+        behavior: "smooth"
+      });
 
-);
+  }, [messages]);
 
-}
+  return (
 
-window.addEventListener(
+    <div style={s.list}>
 
-"chatty:message_sent",
+      {
 
-onSent
+        messages.map(
+          (msg, i) => {
 
-);
+            const isMine =
+              msg.sender_id === myId;
 
-return()=>{
+            return (
 
-window.removeEventListener(
+              <div
+                key={
+                  msg.id ||
+                  `tmp-${i}`
+                }
+                style={{
+                  display: "flex",
+                  justifyContent:
+                    isMine
+                      ? "flex-end"
+                      : "flex-start"
+                }}
+              >
 
-"chatty:message_sent",
+                <div
+                  style={{
+                    position: "relative",
+                    ...s.bubble,
+                    ...(isMine
+                      ? s.bubbleMe
+                      : s.bubbleThem)
+                  }}
+                >
 
-onSent
+                  {isMine && (
 
-);
+                    <div style={s.menuWrap}>
 
-};
+                      <button
+                        style={s.menuBtn}
+                        onClick={() =>
+                          toggleMenu(
+                            msg.id
+                          )
+                        }
+                      >
+                        ⋮
+                      </button>
 
-},[
-conversationId
-]);
+                      {
 
+                        menuOpen===msg.id && (
 
-/* ---------- Socket messages ---------- */
+                        <div
+                        style={{
+                          ...s.popup,
+                          ...(menuBlur
+                          ? s.popupBlur
+                          : {})
+                        }}
+                        >
 
-useEffect(()=>{
+                          <button
+                          style={s.deleteBtn}
+                          onClick={() =>
+                            deleteMessage(
+                              msg.id
+                            )
+                          }
+                          >
+                            Delete
+                          </button>
 
-const socket=
-getSocket();
+                        </div>
 
-if(
-!socket
-)return;
+                        )
 
-socket.emit(
-"join_conversation",
-conversationId
-);
+                      }
 
-async function onMessage(data){
+                    </div>
 
-if(
+                  )}
 
-String(
-data.conversation_id
-)
+                  <MessageContent
+                    content={
+                      msg.content
+                    }
+                  />
 
-!==
+                </div>
 
-String(
-conversationId
-)
+              </div>
 
-)
+            );
 
-return;
+          }
+        )
 
-const decrypted=
+      }
 
-await tryDecrypt(
+      <div ref={bottomRef} />
 
-data,
-conversationId
+    </div>
 
-);
-
-setMessages(
-
-prev=>
-
-[
-
-...prev,
-
-decrypted
-
-]
-
-);
-
-}
-
-socket.on(
-"receive_message",
-onMessage
-);
-
-return()=>{
-
-socket.off(
-"receive_message",
-onMessage
-);
-
-};
-
-},
-[
-conversationId
-]);
-
-
-/* ---------- Scroll ---------- */
-
-useEffect(()=>{
-
-bottomRef.current
-?.scrollIntoView({
-
-behavior:"smooth"
-
-});
-
-},
-[
-messages
-]);
-
-
-/* ---------- UI ---------- */
-
-return(
-
-<div style={s.list}>
-
-{
-
-messages.map(
-
-(msg,i)=>{
-
-const isMine=
-
-msg.sender_id===myId;
-
-return(
-
-<div
-
-key={
-msg.id ??
-`tmp-${i}`
-}
-
-style={{
-
-display:"flex",
-
-justifyContent:
-
-isMine
-?
-"flex-end"
-:
-"flex-start",
-
-marginBottom:4
-
-}}
-
->
-
-<div
-
-style={{
-
-...s.bubble,
-
-...(isMine
-?
-s.bubbleMe
-:
-s.bubbleThem)
-
-}}
-
->
-
-{
-
-!isMine &&
-msg.sender_name &&
-
-<div style={s.senderName}>
-
-{msg.sender_name}
-
-</div>
+  );
 
 }
 
-<MessageContent
-content={
-msg.content
-}
-/>
-
-<div style={s.timestamp}>
-
-{
-
-new Date(
-msg.created_at
-)
-
-.toLocaleTimeString(
-[],
-{
-hour:"2-digit",
-minute:"2-digit"
-}
-)
-
-}
-
-</div>
-
-</div>
-
-</div>
-
-);
-
-}
-
-)
-
-}
-
-<div ref={bottomRef}/>
-
-</div>
-
-);
-
-}
-
-const s={
+const s = {
 
 list:{
 flex:1,
 overflowY:"auto",
-padding:"12px 16px",
-display:"flex",
-flexDirection:"column"
+padding:"12px 16px"
 },
 
 bubble:{
-padding:"9px 13px",
-margin:"3px 0",
-borderRadius:
-"var(--radius-bubble)",
+padding:"10px",
 maxWidth:"70%",
-color:
-"var(--text-primary)",
-fontSize:14,
-lineHeight:1.5
+borderRadius:16
 },
 
 bubbleMe:{
-background:
-"var(--bg-bubble-me)",
-borderBottomRightRadius:4
+background:"var(--bg-bubble-me)"
 },
 
 bubbleThem:{
-background:
-"var(--bg-bubble-them)",
-borderBottomLeftRadius:4
+background:"var(--bg-bubble-them)"
 },
 
-senderName:{
-fontSize:11.5,
-fontWeight:600,
-color:"var(--accent2)",
-marginBottom:3
+menuWrap:{
+position:"absolute",
+top:4,
+right:4
 },
 
-timestamp:{
-fontSize:10,
-opacity:.55,
-textAlign:"right",
-marginTop:4,
-color:
-"var(--text-primary)"
+menuBtn:{
+background:"none",
+fontSize:14,
+color:"var(--text-muted)"
+},
+
+popup:{
+position:"absolute",
+top:18,
+right:0,
+padding:6,
+background:"var(--bg-header)",
+border:"1px solid var(--border)",
+borderRadius:8
+},
+
+popupBlur:{
+filter:"blur(3px)",
+opacity:.3,
+pointerEvents:"none",
+transition:"all 1.5s"
+},
+
+deleteBtn:{
+background:"none",
+color:"#ff6666"
 }
 
 };
