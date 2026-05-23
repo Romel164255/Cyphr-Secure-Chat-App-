@@ -186,17 +186,46 @@ export default function Sidebar({ activeConversationId, onSelect, onLogout }) {
       {/* ── Drawers ── */}
       {mode === "search" && (
         <SearchUsers
-          reload={load}
-          onSelect={(id, title) => { onSelect(id, title); setMode("list"); }}
-          onClose={() => setMode("list")}
-        />
+  reload={load}
+  onSelect={(id, title, userId) => {
+
+    onSelect({
+      id,
+      title,
+      isGroup:false,
+
+      targetUserId:
+        userId || id
+    });
+
+    setMode("list");
+
+  }}
+
+  onClose={() => setMode("list")}
+/>
       )}
       {mode === "group" && (
         <CreateGroup
-          reload={load}
-          onCreated={(id, title) => { onSelect(id, title); setMode("list"); }}
-          onClose={() => setMode("list")}
-        />
+  reload={load}
+
+  onCreated={(id,title)=>{
+
+    onSelect({
+
+      id,
+      title,
+      isGroup:true,
+      targetUserId:null
+
+    });
+
+    setMode("list");
+
+  }}
+
+  onClose={()=>setMode("list")}
+/>
       )}
 
       {/* ── List Mode ── */}
@@ -243,16 +272,42 @@ export default function Sidebar({ activeConversationId, onSelect, onLogout }) {
               </div>
             )}
             {filtered.map(c => {
-              const active = c.id === activeConversationId;
+              const active =
+                            c.id === activeConversationId?.id ||
+                            c.id === activeConversationId;
               const title = c.title || "Direct Chat";
               return (
                 <ConvoRow
-                  key={c.id}
-                  convo={c}
-                  title={title}
-                  active={active}
-                  onClick={() => onSelect(c.id, title)}
-                />
+
+  key={c.id}
+
+  convo={c}
+
+  title={title}
+
+  active={active}
+
+  onClick={()=>{
+
+    onSelect({
+
+      id:c.id,
+
+      title,
+
+      isGroup:c.is_group,
+
+      targetUserId:
+        c.other_user_id ||
+        c.user_id ||
+        c.participant_id ||
+        null
+
+    });
+
+  }}
+
+/>
               );
             })}
           </div>

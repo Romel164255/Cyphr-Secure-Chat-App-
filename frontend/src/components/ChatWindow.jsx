@@ -1,346 +1,557 @@
-import { useState,useEffect } from "react";
+import { useState, useEffect } from "react";
 import MessageList from "./MessageList";
 import MessageInput from "./MessageInput";
 import { Avatar } from "./Sidebar";
 import api from "../services/api";
 import { getSocket } from "../services/socket";
 
+import { useWebRTC } from "../hooks/useWebRTC";
+import {
+  IncomingCallModal,
+  ActiveCallScreen
+} from "./CallUI";
+
 export default function ChatWindow({
 
-conversationId,
-title,
-isGroup,
-onBack
+  conversationId,
+  title,
+  isGroup,
+  onBack,
+  targetUserId
 
-}){
+}) {
 
-const[
-onlineUsers,
-setOnlineUsers
-]=useState([]);
+  const [onlineUsers, setOnlineUsers] = useState([]);
+  const [typingUsers, setTypingUsers] = useState([]);
+  const [members, setMembers] = useState([]);
+  const [showInfo, setShowInfo] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
 
-const[
-typingUsers,
-setTypingUsers
-]=useState([]);
+  /* ─────────────────────────────
+     WebRTC Hook
+  ───────────────────────────── */
 
-const[
-members,
-setMembers
-]=useState([]);
+  const {
 
-const[
-showInfo,
-setShowInfo
-]=useState(false);
+    callState,
+    callType,
+    remoteUserId,
 
+    localStream,
+    remoteStream,
 
-useEffect(()=>{
+    startCall,
+    acceptCall,
+    rejectCall,
+    endCall,
 
-const s=getSocket();
+    handleIncomingOffer,
+    handleAnswer,
+    handleIceCandidate,
 
-if(!s)return;
+  } = useWebRTC({
 
-const fn=(list)=>{
+    onCallEnded: () => {
+      setIsMuted(false);
+    }
 
-setOnlineUsers(list);
+  });
 
-};
+  /* ─────────────────────────────
+     Online users
+  ───────────────────────────── */
 
-s.on(
-"online_users",
-fn
-);
+  useEffect(() => {
 
-return()=>{
+    const s = getSocket();
 
-s.off(
-"online_users",
-fn
-);
+    if (!s) return;
 
-};
+    const fn = (list) => {
+      setOnlineUsers(list);
+    };
 
-},[]);
+    s.on(
+      "online_users",
+      fn
+    );
 
+    return () => {
 
-useEffect(()=>{
+      s.off(
+        "online_users",
+        fn
+      );
 
-const s=getSocket();
+    };
 
-if(
-!s||
-!conversationId
-)return;
+  }, []);
 
-const fn=({
+  /* ─────────────────────────────
+     Typing users
+  ───────────────────────────── */
 
-conversationId:cid,
-userId,
-isTyping
+  useEffect(() => {
 
-})=>{
+    const s = getSocket();
 
-if(
-cid!==conversationId
-)return;
+    if (
+      !s ||
+      !conversationId
+    ) return;
 
-setTypingUsers(
-prev=>
+    const fn = ({
 
-isTyping
-?
-[
-...new Set([
-...prev,
-userId
-])
-]
-:
-prev.filter(
-x=>x!==userId
-)
+      conversationId: cid,
+      userId,
+      isTyping
 
-);
+    }) => {
 
-};
+      if (
+        cid !== conversationId
+      ) return;
 
-s.on(
-"user_typing",
-fn
-);
+      setTypingUsers(
+        prev =>
+
+          isTyping
+            ? [...new Set([
+              ...prev,
+              userId
+            ])]
+            : prev.filter(
+              x => x !== userId
+            )
+      );
+
+    };
+
+    s.on(
+      "user_typing",
+      fn
+    );
+
+    return () => {
+
+      s.off(
+        "user_typing",
+        fn
+      );
+
+    };
+
+  }, [conversationId]);
+
+  /* ─────────────────────────────
+     Group members
+  ───────────────────────────── */
+
+  useEffect(() => {
+
+    if (
+      showInfo &&
+      isGroup
+    ) {
 
-return()=>{
+      api
+        .get(
+          `/groups/${conversationId}/members`
+        )
+        .then(
+          r => setMembers(
+            r.data
+          )
+        )
+        .catch(() => { });
 
-s.off(
-"user_typing",
-fn
-);
+    }
 
-};
+  }, [
+    showInfo,
+    conversationId,
+    isGroup
+  ]);
 
-},[
-conversationId
-]);
+  /* ─────────────────────────────
+     WebRTC Socket listeners
+  ───────────────────────────── */
 
+  useEffect(() => {
 
-useEffect(()=>{
+    const s = getSocket();
 
-if(
-showInfo &&
-isGroup
-){
+    if (!s) return;
 
-api
-.get(
-`/groups/${conversationId}/members`
-)
-.then(
-r=>
-setMembers(
-r.data
-)
-)
-.catch(()=>{});
+    s.on(
+      "webrtc_offer",
+      handleIncomingOffer
+    );
 
-}
+    s.on(
+      "webrtc_answer",
+      handleAnswer
+    );
 
-},[
-showInfo,
-conversationId,
-isGroup
-]);
+    s.on(
+      "webrtc_ice_candidate",
+      handleIceCandidate
+    );
 
+    s.on(
+      "webrtc_rejected",
+      endCall
+    );
 
-if(
-!conversationId
-){
+    s.on(
+      "webrtc_ended",
+      endCall
+    );
 
-return(
+    return () => {
 
-<div className="empty-chat">
+      s.off(
+        "webrtc_offer",
+        handleIncomingOffer
+      );
 
-<div>
+      s.off(
+        "webrtc_answer",
+        handleAnswer
+      );
 
-<h2>
+      s.off(
+        "webrtc_ice_candidate",
+        handleIceCandidate
+      );
 
-Welcome to Cyphr
+      s.off(
+        "webrtc_rejected",
+        endCall
+      );
 
-</h2>
+      s.off(
+        "webrtc_ended",
+        endCall
+      );
 
-<p>
+    };
 
-Select a conversation
+  }, [
 
-</p>
+    handleIncomingOffer,
+    handleAnswer,
+    handleIceCandidate,
+    endCall
 
-</div>
+  ]);
 
-</div>
+  /* ─────────────────────────────
+     Mute
+  ───────────────────────────── */
 
-);
+  function toggleMute() {
 
-}
+    if (
+      !localStream
+    ) return;
 
+    localStream
+      .getAudioTracks()
+      .forEach(track => {
 
-return(
+        track.enabled =
+          !track.enabled;
 
-<div className="chat-window">
+      });
 
-<div className="chat-header">
+    setIsMuted(
+      m => !m
+    );
 
-<button
-className="mobile-back"
-onClick={onBack}
->
+  }
 
-←
+  /* Empty */
 
-</button>
+  if (!conversationId) {
 
-<Avatar
-name={title}
-size={42}
-isGroup={isGroup}
-/>
+    return (
 
-<div
-className="chat-header-info"
->
+      <div className="empty-chat">
 
-<div>
+        <div>
 
-{title}
+          <h2>
+            Welcome to Cyphr
+          </h2>
 
-</div>
+          <p>
+            Select a conversation
+          </p>
 
-<div
-className="chat-status"
->
+        </div>
 
-{
+      </div>
 
-typingUsers.length>0
+    );
 
-?
+  }
 
-"typing..."
+  return (
 
-:
+    <>
 
-onlineUsers.length>0
+      <div className="chat-window">
 
-?
+        <div className="chat-header">
 
-"online"
+          <button
+            className="mobile-back"
+            onClick={onBack}
+          >
+            ←
+          </button>
 
-:
+          <Avatar
+            name={title}
+            size={42}
+            isGroup={isGroup}
+          />
 
-"last seen recently"
+          <div
+            className="chat-header-info"
+          >
 
-}
+            <div>
 
-</div>
+              {title}
 
-</div>
+            </div>
 
-<button
+            <div
+              className="chat-status"
+            >
 
-className="header-btn"
+              {
 
-onClick={()=>
-setShowInfo(
-v=>!v
-)
-}
+                typingUsers.length > 0
 
->
+                  ? "typing..."
 
-⋮
+                  : onlineUsers.length > 0
 
-</button>
+                    ? "online"
 
-</div>
+                    : "last seen recently"
 
-<div
-className="chat-content"
->
+              }
 
-<div
-className="chat-main"
->
+            </div>
 
-<MessageList
-conversationId={
-conversationId
-}
-isGroup={
-isGroup
-}
-/>
+          </div>
 
-<MessageInput
-conversationId={
-conversationId
-}
-/>
+          {/* Call Buttons */}
 
-</div>
+          {
 
-{
+            !isGroup && (
 
-showInfo &&
-isGroup &&
+              <>
 
-<div
-className="info-panel"
->
+                <button
+                  className="header-btn"
+                  title="Voice Call"
+                  onClick={() =>
+                    startCall(
+                      targetUserId,
+                      "audio"
+                    )
+                  }
+                >
 
-<h4>
+                  🎙
 
-Members
+                </button>
 
-</h4>
+                <button
+                  className="header-btn"
+                  title="Video Call"
+                  onClick={() =>
+                    startCall(
+                      targetUserId,
+                      "video"
+                    )
+                  }
+                >
 
-{
+                  📹
 
-members.map(
-m=>
+                </button>
 
-<div
-key={m.id}
-className="member-row"
->
+              </>
 
-<Avatar
-name={
-m.username
-}
-size={32}
-/>
+            )
 
-<span>
+          }
 
-{
-m.username
-}
+          <button
 
-</span>
+            className="header-btn"
 
-</div>
+            onClick={() =>
+              setShowInfo(
+                v => !v
+              )
+            }
 
-)
+          >
 
-}
+            ⋮
 
-</div>
+          </button>
 
-}
+        </div>
 
-</div>
+        <div
+          className="chat-content"
+        >
 
-</div>
+          <div
+            className="chat-main"
+          >
 
-);
+            <MessageList
+              conversationId={
+                conversationId
+              }
+              isGroup={
+                isGroup
+              }
+            />
+
+            <MessageInput
+              conversationId={
+                conversationId
+              }
+            />
+
+          </div>
+
+          {
+
+            showInfo &&
+            isGroup &&
+
+            <div
+              className="info-panel"
+            >
+
+              <h4>
+                Members
+              </h4>
+
+              {
+
+                members.map(
+                  m =>
+
+                    <div
+                      key={m.id}
+                      className="member-row"
+                    >
+
+                      <Avatar
+                        name={
+                          m.username
+                        }
+                        size={32}
+                      />
+
+                      <span>
+
+                        {
+                          m.username
+                        }
+
+                      </span>
+
+                    </div>
+
+                )
+
+              }
+
+            </div>
+
+          }
+
+        </div>
+
+      </div>
+
+      {/* Incoming call */}
+
+      {
+
+        callState === "incoming" &&
+
+        <IncomingCallModal
+
+          callerName={title}
+          callType={callType}
+
+          onAccept={
+            acceptCall
+          }
+
+          onReject={
+            rejectCall
+          }
+
+        />
+
+      }
+
+      {/* Active call */}
+
+      {
+
+        (
+          callState === "active" ||
+          callState === "calling"
+        ) &&
+
+        <ActiveCallScreen
+
+          callerName={title}
+          callType={callType}
+
+          localStream={
+            localStream
+          }
+
+          remoteStream={
+            remoteStream
+          }
+
+          onEnd={
+            endCall
+          }
+
+          isMuted={
+            isMuted
+          }
+
+          onToggleMute={
+            toggleMute
+          }
+
+        />
+
+      }
+
+    </>
+
+  );
 
 }
