@@ -6,6 +6,7 @@ import api from "../services/api";
 import { getSocket } from "../services/socket";
 import { useWebRTC } from "../hooks/useWebRTC";
 import { IncomingCallModal, ActiveCallScreen, CallingScreen } from "./CallUI";
+import { IoCall, IoVideocam } from "react-icons/io5";
 
 export default function ChatWindow({ conversationId, title, isGroup, otherUserId, onBack }) {
   const [onlineUsers, setOnlineUsers] = useState([]);
@@ -105,10 +106,14 @@ export default function ChatWindow({ conversationId, title, isGroup, otherUserId
           <>
             <button className="header-btn" title="Voice call"
               onClick={() => startCall(otherUserId, "audio")}
-              style={{ fontSize: 18 }}>🎙</button>
+              style={callBtnStyle}>
+              <IoCall size={20} />
+            </button>
             <button className="header-btn" title="Video call"
               onClick={() => startCall(otherUserId, "video")}
-              style={{ fontSize: 18 }}>📹</button>
+              style={callBtnStyle}>
+              <IoVideocam size={21} />
+            </button>
           </>
         )}
 
@@ -148,3 +153,10 @@ export default function ChatWindow({ conversationId, title, isGroup, otherUserId
     </div>
   );
 }
+
+const callBtnStyle = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  color: "var(--text-secondary)",
+};
