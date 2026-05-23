@@ -26,7 +26,7 @@ export default function SearchUsers({ reload, onSelect, onClose }) {
     try {
       const r = await api.post("/conversations", { user_id: u.id });
       await reload();
-      onSelect(r.data.conversation_id, u.display_name || u.username);
+      onSelect(r.data.conversation_id, u.display_name || u.username, false, u.id);
     } catch {}
   }
 

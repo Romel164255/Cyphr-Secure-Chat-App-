@@ -87,6 +87,7 @@ export async function getUserConversations(req, res) {
           ELSE COALESCE(other_user.display_name, other_user.username, 'Direct Chat')
         END AS title,
         c.is_group,
+        CASE WHEN c.is_group THEN NULL ELSE other_user.id END AS other_user_id,
         m.content AS last_message,
         m.iv AS last_message_iv,
         m.created_at AS last_message_time,
@@ -119,6 +120,7 @@ export async function getUserConversations(req, res) {
         c.id,
         c.is_group,
         c.title,
+        other_user.id,
         other_user.display_name,
         other_user.username,
         m.content,
