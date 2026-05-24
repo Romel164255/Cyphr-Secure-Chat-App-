@@ -205,6 +205,13 @@ io.on("connection", (socket) => {
     emitToUser(targetUserId, "webrtc_ended", { fromUserId: userId });
   });
 
+  socket.on("webrtc_call_record", ({ targetUserId, type, status, duration, conversationId }) => {
+    // Relay call record to the other participant so they see it in their chat too
+    emitToUser(targetUserId, "webrtc_call_record", {
+      fromUserId: userId, type, status, duration, conversationId,
+    });
+  });
+
 
 
   /* — Typing indicators (debounced on server) — */

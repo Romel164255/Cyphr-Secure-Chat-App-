@@ -13,12 +13,8 @@ export function IncomingCallModal({ callerName, callType, onAccept, onReject }) 
         </p>
         <h3 style={{ margin: "0 0 24px", fontSize: 18 }}>{callerName}</h3>
         <div style={{ display: "flex", gap: 16, justifyContent: "center" }}>
-          <button onClick={onReject} style={btnRed} title="Decline">
-            ✕ Decline
-          </button>
-          <button onClick={onAccept} style={btnGreen} title="Accept">
-            ✓ Accept
-          </button>
+          <button onClick={onReject} style={btnRed}>✕ Decline</button>
+          <button onClick={onAccept} style={btnGreen}>✓ Accept</button>
         </div>
       </div>
     </div>
@@ -28,71 +24,86 @@ export function IncomingCallModal({ callerName, callType, onAccept, onReject }) 
 /* ── Active call screen ── */
 export function ActiveCallScreen({ callerName, callType, localStream, remoteStream, onEnd, isMuted, onToggleMute }) {
   const remoteVideoRef = useRef(null);
-  const localVideoRef = useRef(null);
+  const localVideoRef  = useRef(null);
+  // Audio element is ALWAYS in the DOM — voice calls need it; video calls also have audio tracks
   const remoteAudioRef = useRef(null);
 
+  /* Attach remote stream to video element (video calls) */
   useEffect(() => {
-    if (remoteVideoRef.current && remoteStream) remoteVideoRef.current.srcObject = remoteStream;
+    const el = remoteVideoRef.current;
+    if (!el) return;
+    if (remoteStream) {
+      el.srcObject = remoteStream;
+      el.play().catch(() => {}); // autoplay policy
+    }
   }, [remoteStream]);
 
+  /* Attach local stream to small preview (video calls) */
   useEffect(() => {
-    if (localVideoRef.current && localStream) localVideoRef.current.srcObject = localStream;
+    const el = localVideoRef.current;
+    if (!el) return;
+    if (localStream) {
+      el.srcObject = localStream;
+      el.play().catch(() => {});
+    }
   }, [localStream]);
 
+  /* Attach remote stream to audio element — covers voice calls AND the audio
+     track of video calls when the browser doesn't auto-play video audio */
   useEffect(() => {
-    if (remoteAudioRef.current && remoteStream) remoteAudioRef.current.srcObject = remoteStream;
+    const el = remoteAudioRef.current;
+    if (!el) return;
+    if (remoteStream) {
+      el.srcObject = remoteStream;
+      el.play().catch(() => {});
+    }
   }, [remoteStream]);
+
+  const isVideo = callType === "video";
 
   return (
     <div style={overlay}>
-      <div style={{ ...card, width: callType === "video" ? 500 : 300 }}>
-        {callType === "video" ? (
-          <div style={{ position: "relative", background: "#000", borderRadius: 10, marginBottom: 16, overflow: "hidden", minHeight: 240 }}>
-            <video
-              ref={remoteVideoRef}
-              autoPlay
-              playsInline
-              style={{ width: "100%", display: "block", borderRadius: 10 }}
-            />
-            <video
-              ref={localVideoRef}
-              autoPlay
-              playsInline
-              muted
-              style={{
-                position: "absolute", bottom: 10, right: 10,
-                width: 100, borderRadius: 8,
-                border: "2px solid rgba(255,255,255,0.2)",
-              }}
-            />
+      <div style={{ ...card, width: isVideo ? 520 : 300 }}>
+
+        {/* ── Video layout ── */}
+        {isVideo && (
+          <div style={{ position: "relative", background: "#000", borderRadius: 12, marginBottom: 16, overflow: "hidden", minHeight: 260 }}>
+            {/* Remote video (full) */}
+            <video ref={remoteVideoRef} autoPlay playsInline
+              style={{ width: "100%", display: "block", borderRadius: 12 }} />
+            {/* Local video (pip) */}
+            <video ref={localVideoRef} autoPlay playsInline muted
+              style={{ position: "absolute", bottom: 10, right: 10, width: 110,
+                borderRadius: 8, border: "2px solid rgba(255,255,255,0.2)" }} />
           </div>
-        ) : (
-          <>
-            <div style={{ fontSize: 56, marginBottom: 12 }}>📞</div>
-            {/* hidden audio element for voice calls */}
-            <audio ref={remoteAudioRef} autoPlay playsInline />
-          </>
         )}
+
+        {/* ── Audio layout ── */}
+        {!isVideo && (
+          <div style={{ fontSize: 60, marginBottom: 16 }}>📞</div>
+        )}
+
+        {/* Hidden audio element — always present so ref is ready when stream arrives */}
+        <audio ref={remoteAudioRef} autoPlay playsInline
+          style={{ display: "none" }} />
 
         <p style={{ margin: "0 0 4px", fontWeight: 700, fontSize: 17 }}>{callerName}</p>
         <p style={{ margin: "0 0 20px", fontSize: 12, color: "#aaa" }}>
-          {callType === "video" ? "Video call" : "Voice call"} in progress…
+          {isVideo ? "Video call" : "Voice call"} in progress…
         </p>
 
         <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
           <button onClick={onToggleMute} style={btnGray}>
             {isMuted ? "🔇 Unmute" : "🎙 Mute"}
           </button>
-          <button onClick={onEnd} style={btnRed}>
-            ✕ End call
-          </button>
+          <button onClick={onEnd} style={btnRed}>✕ End</button>
         </div>
       </div>
     </div>
   );
 }
 
-/* ── Calling… screen (outgoing, waiting for answer) ── */
+/* ── Outgoing / calling screen ── */
 export function CallingScreen({ callerName, callType, onCancel }) {
   return (
     <div style={overlay}>
@@ -113,35 +124,21 @@ export function CallingScreen({ callerName, callType, onCancel }) {
 /* ── Styles ── */
 const overlay = {
   position: "fixed", inset: 0,
-  background: "rgba(0,0,0,0.75)",
+  background: "rgba(0,0,0,0.78)",
   display: "flex", alignItems: "center", justifyContent: "center",
   zIndex: 9999,
-  backdropFilter: "blur(4px)",
+  backdropFilter: "blur(6px)",
 };
-
 const card = {
   background: "var(--bg-secondary, #1e1e2e)",
-  borderRadius: 18,
+  borderRadius: 20,
   padding: "28px 32px",
   textAlign: "center",
   color: "var(--text-primary, #fff)",
   minWidth: 260,
-  boxShadow: "0 20px 60px rgba(0,0,0,0.6)",
+  boxShadow: "0 24px 64px rgba(0,0,0,0.65)",
   border: "1px solid var(--border, rgba(255,255,255,0.08))",
 };
-
-const btnRed = {
-  padding: "10px 24px", borderRadius: 50, border: "none",
-  background: "#e53935", color: "#fff", cursor: "pointer",
-  fontWeight: 600, fontSize: 14,
-};
-const btnGreen = {
-  padding: "10px 24px", borderRadius: 50, border: "none",
-  background: "#43a047", color: "#fff", cursor: "pointer",
-  fontWeight: 600, fontSize: 14,
-};
-const btnGray = {
-  padding: "10px 24px", borderRadius: 50, border: "none",
-  background: "rgba(255,255,255,0.1)", color: "#fff", cursor: "pointer",
-  fontWeight: 600, fontSize: 14,
-};
+const btnRed   = { padding: "10px 24px", borderRadius: 50, border: "none", background: "#e53935", color: "#fff", cursor: "pointer", fontWeight: 600, fontSize: 14 };
+const btnGreen = { padding: "10px 24px", borderRadius: 50, border: "none", background: "#43a047", color: "#fff", cursor: "pointer", fontWeight: 600, fontSize: 14 };
+const btnGray  = { padding: "10px 24px", borderRadius: 50, border: "none", background: "rgba(255,255,255,0.1)", color: "#fff", cursor: "pointer", fontWeight: 600, fontSize: 14 };

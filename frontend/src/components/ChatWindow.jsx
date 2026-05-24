@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import MessageList from "./MessageList";
 import MessageInput from "./MessageInput";
 import { Avatar } from "./Sidebar";
@@ -8,19 +8,45 @@ import { useWebRTC } from "../hooks/useWebRTC";
 import { IncomingCallModal, ActiveCallScreen, CallingScreen } from "./CallUI";
 import { IoCall, IoVideocam } from "react-icons/io5";
 
+function dispatch(name, detail) {
+  window.dispatchEvent(new CustomEvent(name, { detail }));
+}
+
 export default function ChatWindow({ conversationId, title, isGroup, otherUserId, onBack }) {
-  const [onlineUsers, setOnlineUsers] = useState([]);
-  const [typingUsers, setTypingUsers] = useState([]);
-  const [members, setMembers] = useState([]);
-  const [showInfo, setShowInfo] = useState(false);
-  const [isMuted, setIsMuted] = useState(false);
+  const [onlineUsers, setOnlineUsers]   = useState([]);
+  const [typingUsers, setTypingUsers]   = useState([]);
+  const [members, setMembers]           = useState([]);
+  const [showInfo, setShowInfo]         = useState(false);
+  const [isMuted, setIsMuted]           = useState(false);
+
+  /* ── Call record: fires when a call ends (either side) ── */
+  const handleCallRecord = useCallback((type, status, duration, isInitiator) => {
+    // Show in local chat immediately
+    dispatch("chatty:call_record", { type, status, duration, isMine: isInitiator, conversationId });
+
+    // Tell the other person via socket so they see it too
+    if (otherUserId) {
+      getSocket()?.emit("webrtc_call_record", {
+        targetUserId: otherUserId,
+        type,
+        status,
+        duration,
+        conversationId,
+      });
+    }
+  }, [conversationId, otherUserId]);
 
   const {
     callState, callType, localStream, remoteStream,
     startCall, acceptCall, rejectCall, endCall,
     handleIncomingOffer, handleAnswer, handleIceCandidate,
-  } = useWebRTC({ onCallEnded: () => setIsMuted(false) });
+    handleRemoteEnd, handleRemoteReject,
+  } = useWebRTC({
+    onCallEnded:  () => setIsMuted(false),
+    onCallRecord: handleCallRecord,
+  });
 
+  /* ── Online users ── */
   useEffect(() => {
     const s = getSocket();
     if (!s) return;
@@ -29,38 +55,54 @@ export default function ChatWindow({ conversationId, title, isGroup, otherUserId
     return () => s.off("online_users", fn);
   }, []);
 
+  /* ── Typing indicators ── */
   useEffect(() => {
     const s = getSocket();
     if (!s || !conversationId) return;
     const fn = ({ conversationId: cid, userId, isTyping }) => {
       if (cid !== conversationId) return;
       setTypingUsers(prev =>
-        isTyping
-          ? [...new Set([...prev, userId])]
-          : prev.filter(x => x !== userId)
+        isTyping ? [...new Set([...prev, userId])] : prev.filter(x => x !== userId)
       );
     };
     s.on("user_typing", fn);
     return () => s.off("user_typing", fn);
   }, [conversationId]);
 
+  /* ── WebRTC socket events ── */
   useEffect(() => {
     const s = getSocket();
     if (!s) return;
-    s.on("webrtc_offer", handleIncomingOffer);
-    s.on("webrtc_answer", handleAnswer);
-    s.on("webrtc_ice_candidate", handleIceCandidate);
-    s.on("webrtc_rejected", endCall);
-    s.on("webrtc_ended", endCall);
-    return () => {
-      s.off("webrtc_offer", handleIncomingOffer);
-      s.off("webrtc_answer", handleAnswer);
-      s.off("webrtc_ice_candidate", handleIceCandidate);
-      s.off("webrtc_rejected", endCall);
-      s.off("webrtc_ended", endCall);
-    };
-  }, [handleIncomingOffer, handleAnswer, handleIceCandidate, endCall]);
 
+    // When the other side sends us a call record (they hung up / missed etc.)
+    function onRemoteCallRecord({ type, status, duration, conversationId: cid }) {
+      dispatch("chatty:call_record", {
+        type,
+        status,
+        duration,
+        isMine: false,     // from their perspective they sent it; for us it's incoming
+        conversationId: cid,
+      });
+    }
+
+    s.on("webrtc_offer",        handleIncomingOffer);
+    s.on("webrtc_answer",       handleAnswer);
+    s.on("webrtc_ice_candidate",handleIceCandidate);
+    s.on("webrtc_rejected",     handleRemoteReject);
+    s.on("webrtc_ended",        handleRemoteEnd);
+    s.on("webrtc_call_record",  onRemoteCallRecord);
+
+    return () => {
+      s.off("webrtc_offer",        handleIncomingOffer);
+      s.off("webrtc_answer",       handleAnswer);
+      s.off("webrtc_ice_candidate",handleIceCandidate);
+      s.off("webrtc_rejected",     handleRemoteReject);
+      s.off("webrtc_ended",        handleRemoteEnd);
+      s.off("webrtc_call_record",  onRemoteCallRecord);
+    };
+  }, [handleIncomingOffer, handleAnswer, handleIceCandidate, handleRemoteEnd, handleRemoteReject]);
+
+  /* ── Group member list ── */
   useEffect(() => {
     if (showInfo && isGroup) {
       api.get(`/groups/${conversationId}/members`)
@@ -88,17 +130,16 @@ export default function ChatWindow({ conversationId, title, isGroup, otherUserId
 
   return (
     <div className="chat-window">
+      {/* ── Header ── */}
       <div className="chat-header">
         <button className="mobile-back" onClick={onBack}>←</button>
         <Avatar name={title} size={42} isGroup={isGroup} />
         <div className="chat-header-info">
           <div>{title}</div>
           <div className="chat-status">
-            {typingUsers.length > 0
-              ? "typing..."
-              : onlineUsers.length > 0
-                ? "online"
-                : "last seen recently"}
+            {typingUsers.length > 0 ? "typing..."
+              : onlineUsers.length > 0 ? "online"
+              : "last seen recently"}
           </div>
         </div>
 
@@ -106,12 +147,12 @@ export default function ChatWindow({ conversationId, title, isGroup, otherUserId
           <>
             <button className="header-btn" title="Voice call"
               onClick={() => startCall(otherUserId, "audio")}
-              style={callBtnStyle}>
+              style={iconBtnStyle}>
               <IoCall size={20} />
             </button>
             <button className="header-btn" title="Video call"
               onClick={() => startCall(otherUserId, "video")}
-              style={callBtnStyle}>
+              style={iconBtnStyle}>
               <IoVideocam size={21} />
             </button>
           </>
@@ -120,6 +161,7 @@ export default function ChatWindow({ conversationId, title, isGroup, otherUserId
         <button className="header-btn" onClick={() => setShowInfo(v => !v)}>⋮</button>
       </div>
 
+      {/* ── Messages + Input ── */}
       <div className="chat-content">
         <div className="chat-main">
           <MessageList conversationId={conversationId} isGroup={isGroup} />
@@ -138,6 +180,7 @@ export default function ChatWindow({ conversationId, title, isGroup, otherUserId
         )}
       </div>
 
+      {/* ── Call overlays ── */}
       {callState === "incoming" && (
         <IncomingCallModal callerName={title} callType={callType}
           onAccept={acceptCall} onReject={rejectCall} />
@@ -154,9 +197,7 @@ export default function ChatWindow({ conversationId, title, isGroup, otherUserId
   );
 }
 
-const callBtnStyle = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
+const iconBtnStyle = {
+  display: "flex", alignItems: "center", justifyContent: "center",
   color: "var(--text-secondary)",
 };
