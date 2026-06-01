@@ -17,7 +17,7 @@ function pickAudioMimeType() {
     "audio/mp4",
   ];
   if (typeof MediaRecorder === "undefined") return "";
-  return mimeTypes.find(t => MediaRecorder.isTypeSupported(t)) || "";
+  return mimeTypes.find((t) => MediaRecorder.isTypeSupported(t)) || "";
 }
 
 function arrayBufferToBase64(buffer) {
@@ -57,7 +57,7 @@ export default function MessageInput({ conversationId }) {
 
   const cleanupRecorder = useCallback(() => {
     clearTimers();
-    mediaStreamRef.current?.getTracks().forEach(t => t.stop());
+    mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
     mediaStreamRef.current = null;
     mediaRecorderRef.current = null;
     audioChunksRef.current = [];
@@ -76,7 +76,11 @@ export default function MessageInput({ conversationId }) {
     const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2)}`;
     setText("");
     setSending(true);
-    dispatch("chatty:message_optimistic", { tempId, plaintext: trimmed, conversationId });
+    dispatch("chatty:message_optimistic", {
+      tempId,
+      plaintext: trimmed,
+      conversationId,
+    });
 
     try {
       // 2. Encrypt and post in background
@@ -88,14 +92,16 @@ export default function MessageInput({ conversationId }) {
       });
 
       // 3. Replace optimistic bubble with confirmed server message
-      dispatch("chatty:message_confirmed", { tempId, data: { ...res.data, content: trimmed } });
+      dispatch("chatty:message_confirmed", {
+        tempId,
+        data: { ...res.data, content: trimmed },
+      });
 
       // 4. Broadcast to other participants via socket
       getSocket()?.emit("send_message", res.data);
 
       // 5. Refresh sidebar preview
       dispatch("chatty:message_sent", { plaintext: trimmed, data: res.data });
-
     } catch (err) {
       console.error("[send]", err);
       setText(trimmed); // restore on failure
@@ -106,28 +112,40 @@ export default function MessageInput({ conversationId }) {
   }, [text, sending, recording, conversationId]);
 
   /* ── audio send ── */
-  const sendAudioBlob = useCallback(async (blob) => {
-    if (!blob || blob.size === 0) return;
-    const mimeType = blob.type || "audio/webm";
-    const base64Audio = arrayBufferToBase64(await blob.arrayBuffer());
-    const payload = `${AUDIO_PAYLOAD_PREFIX}${mimeType};base64,${base64Audio}`;
-    const encrypted = await encryptMessage(payload, conversationId);
-    const res = await api.post("/audio/upload", {
-      conversation_id: conversationId,
-      content: encrypted.ciphertext,
-      iv: encrypted.iv,
-    });
-    getSocket()?.emit("send_message", res.data);
-    dispatch("chatty:message_sent", { plaintext: payload, data: res.data });
-  }, [conversationId]);
+  const sendAudioBlob = useCallback(
+    async (blob) => {
+      if (!blob || blob.size === 0) return;
+      const mimeType = blob.type || "audio/webm";
+      const base64Audio = arrayBufferToBase64(await blob.arrayBuffer());
+      const payload = `${AUDIO_PAYLOAD_PREFIX}${mimeType};base64,${base64Audio}`;
+      const encrypted = await encryptMessage(payload, conversationId);
+      const res = await api.post("/audio/upload", {
+        conversation_id: conversationId,
+        content: encrypted.ciphertext,
+        iv: encrypted.iv,
+      });
+      getSocket()?.emit("send_message", res.data);
+      dispatch("chatty:message_sent", { plaintext: payload, data: res.data });
+    },
+    [conversationId],
+  );
 
   const startRecording = useCallback(async () => {
     if (recording || sending) return;
-    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") return;
+    if (
+      !navigator.mediaDevices?.getUserMedia ||
+      typeof MediaRecorder === "undefined"
+    )
+      return;
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        audio: {
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
       });
       const mimeType = pickAudioMimeType();
       const options = { audioBitsPerSecond: AUDIO_BITS_PER_SECOND };
@@ -160,9 +178,13 @@ export default function MessageInput({ conversationId }) {
       recorder.start(250);
       setRecording(true);
       setRecordSeconds(0);
-      recordTimerRef.current = setInterval(() => setRecordSeconds(p => p + 1), 1000);
+      recordTimerRef.current = setInterval(
+        () => setRecordSeconds((p) => p + 1),
+        1000,
+      );
       autoStopTimerRef.current = setTimeout(() => {
-        if (mediaRecorderRef.current?.state === "recording") mediaRecorderRef.current.stop();
+        if (mediaRecorderRef.current?.state === "recording")
+          mediaRecorderRef.current.stop();
       }, MAX_RECORD_SECONDS * 1000);
     } catch (err) {
       console.error("[recording]", err);
@@ -177,11 +199,14 @@ export default function MessageInput({ conversationId }) {
   }, [cleanupRecorder]);
 
   function handleKey(e) {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      send();
+    }
   }
 
   function addEmoji(e) {
-    setText(prev => prev + e.emoji);
+    setText((prev) => prev + e.emoji);
     textareaRef.current?.focus();
   }
 
@@ -193,7 +218,13 @@ export default function MessageInput({ conversationId }) {
         </div>
       )}
       <div style={s.bar}>
-        <button style={s.emojiBtn} onClick={() => setShowEmoji(v => !v)} title="Emoji">😀</button>
+        <button
+          style={s.emojiBtn}
+          onClick={() => setShowEmoji((v) => !v)}
+          title="Emoji"
+        >
+          😀
+        </button>
 
         <textarea
           ref={textareaRef}
@@ -201,13 +232,17 @@ export default function MessageInput({ conversationId }) {
           value={text}
           rows={1}
           placeholder={recording ? `Recording… ${recordSeconds}s` : "Message"}
-          onChange={e => setText(e.target.value)}
+          onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKey}
           disabled={recording}
         />
 
         <button
-          style={{ ...s.audioBtn, ...(recording ? s.audioBtnActive : {}), opacity: sending ? 0.45 : 1 }}
+          style={{
+            ...s.audioBtn,
+            ...(recording ? s.audioBtnActive : {}),
+            opacity: sending ? 0.45 : 1,
+          }}
           onClick={recording ? stopRecording : startRecording}
           disabled={sending}
           title={recording ? "Stop recording" : "Record voice message"}
@@ -216,13 +251,24 @@ export default function MessageInput({ conversationId }) {
         </button>
 
         <button
-          style={{ ...s.sendBtn, opacity: sending || !text.trim() || recording ? 0.45 : 1 }}
+          style={{
+            ...s.sendBtn,
+            opacity: sending || !text.trim() || recording ? 0.45 : 1,
+          }}
           onClick={send}
           disabled={sending || !text.trim() || recording}
           title="Send"
         >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
             <line x1="22" y1="2" x2="11" y2="13" />
             <polygon points="22 2 15 22 11 13 2 9 22 2" />
           </svg>
@@ -234,43 +280,68 @@ export default function MessageInput({ conversationId }) {
 
 const s = {
   bar: {
-    display: "flex", alignItems: "flex-end", gap: 8,
+    display: "flex",
+    alignItems: "flex-end",
+    gap: 8,
     padding: "10px 14px",
     background: "var(--bg-header)",
     borderTop: "1px solid var(--border)",
     flexShrink: 0,
   },
   textarea: {
-    flex: 1, resize: "none",
-    background: "var(--bg-input)", color: "var(--text-primary)",
+    flex: 1,
+    resize: "none",
+    background: "var(--bg-input)",
+    color: "var(--text-primary)",
     border: "1px solid var(--border)",
     borderRadius: "var(--radius-md)",
-    padding: "10px 14px", fontSize: 14, lineHeight: 1.5,
-    maxHeight: 120, overflowY: "auto",
+    padding: "10px 14px",
+    fontSize: 14,
+    lineHeight: 1.5,
+    maxHeight: 120,
+    overflowY: "auto",
     fontFamily: "var(--font)",
     transition: "border-color .15s, background .15s",
   },
   emojiBtn: {
-    background: "none", fontSize: 20, padding: "6px",
-    borderRadius: "50%", color: "var(--text-muted)",
-    flexShrink: 0, transition: "background .15s", lineHeight: 1,
+    background: "none",
+    fontSize: 20,
+    padding: "6px",
+    borderRadius: "50%",
+    color: "var(--text-muted)",
+    flexShrink: 0,
+    transition: "background .15s",
+    lineHeight: 1,
   },
   audioBtn: {
-    width: 38, height: 38, borderRadius: "50%",
-    background: "var(--bg-input)", color: "var(--text-secondary)",
+    width: 38,
+    height: 38,
+    borderRadius: "50%",
+    background: "var(--bg-input)",
+    color: "var(--text-secondary)",
     border: "1px solid var(--border)",
-    display: "flex", alignItems: "center", justifyContent: "center",
-    flexShrink: 0, transition: "all .15s",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    transition: "all .15s",
   },
   audioBtnActive: {
-    background: "rgba(255,90,90,0.15)", color: "#ff7f7f",
+    background: "rgba(255,90,90,0.15)",
+    color: "#ff7f7f",
     borderColor: "rgba(255,90,90,0.35)",
   },
   sendBtn: {
-    background: "var(--accent)", color: "var(--bg-app)",
-    width: 38, height: 38, borderRadius: "50%",
-    display: "flex", alignItems: "center", justifyContent: "center",
-    flexShrink: 0, transition: "opacity .15s, background .15s",
+    background: "var(--accent)",
+    color: "var(--bg-app)",
+    width: 38,
+    height: 38,
+    borderRadius: "50%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    transition: "opacity .15s, background .15s",
   },
   popup: { position: "absolute", bottom: 70, left: 14, zIndex: 100 },
 };

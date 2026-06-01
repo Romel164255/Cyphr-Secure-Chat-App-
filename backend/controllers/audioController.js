@@ -11,7 +11,7 @@ async function isMember(userId, conversationId) {
     WHERE user_id = $1
     AND conversation_id = $2
     `,
-    [userId, conversationId]
+    [userId, conversationId],
   );
 
   return result.rows.length > 0;
@@ -28,7 +28,9 @@ export async function uploadAudio(req, res) {
     const { conversation_id, content, iv } = req.body;
 
     if (!conversation_id || !content || !iv) {
-      return res.status(400).json({ error: "conversation_id, content, iv required" });
+      return res
+        .status(400)
+        .json({ error: "conversation_id, content, iv required" });
     }
 
     if (content.length > MAX_AUDIO_PAYLOAD_LENGTH) {
@@ -65,7 +67,7 @@ export async function uploadAudio(req, res) {
         'sent'
       )
       `,
-      [messageId, conversation_id, req.user.id, content, iv]
+      [messageId, conversation_id, req.user.id, content, iv],
     );
 
     const result = await pool.query(
@@ -84,7 +86,7 @@ export async function uploadAudio(req, res) {
       ON u.id = m.sender_id
       WHERE m.id = $1
       `,
-      [messageId]
+      [messageId],
     );
 
     return res.status(201).json(result.rows[0]);

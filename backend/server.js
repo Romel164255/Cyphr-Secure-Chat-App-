@@ -95,13 +95,13 @@ const io = new Server(server, {
   cors: corsOptions,
   transports: ["websocket", "polling"],
   // Performance tuning
-  pingInterval: 25000,     // how often to ping clients
-  pingTimeout: 10000,      // how long to wait for pong
+  pingInterval: 25000, // how often to ping clients
+  pingTimeout: 10000, // how long to wait for pong
   upgradeTimeout: 10000,
-  maxHttpBufferSize: 1e6,  // 1MB max message
+  maxHttpBufferSize: 1e6, // 1MB max message
   // Compression for larger payloads
   perMessageDeflate: {
-    threshold: 1024,       // only compress payloads > 1KB
+    threshold: 1024, // only compress payloads > 1KB
   },
 });
 
@@ -182,11 +182,15 @@ io.on("connection", (socket) => {
   function emitToUser(targetUserId, event, payload) {
     const sockets = onlineUsers.get(String(targetUserId));
     if (!sockets) return;
-    sockets.forEach(sid => io.to(sid).emit(event, payload));
+    sockets.forEach((sid) => io.to(sid).emit(event, payload));
   }
 
   socket.on("webrtc_offer", ({ targetUserId, offer, callType }) => {
-    emitToUser(targetUserId, "webrtc_offer", { fromUserId: userId, offer, callType });
+    emitToUser(targetUserId, "webrtc_offer", {
+      fromUserId: userId,
+      offer,
+      callType,
+    });
   });
 
   socket.on("webrtc_answer", ({ targetUserId, answer }) => {
@@ -194,7 +198,10 @@ io.on("connection", (socket) => {
   });
 
   socket.on("webrtc_ice_candidate", ({ targetUserId, candidate }) => {
-    emitToUser(targetUserId, "webrtc_ice_candidate", { fromUserId: userId, candidate });
+    emitToUser(targetUserId, "webrtc_ice_candidate", {
+      fromUserId: userId,
+      candidate,
+    });
   });
 
   socket.on("webrtc_reject", ({ targetUserId }) => {
@@ -205,14 +212,19 @@ io.on("connection", (socket) => {
     emitToUser(targetUserId, "webrtc_ended", { fromUserId: userId });
   });
 
-  socket.on("webrtc_call_record", ({ targetUserId, type, status, duration, conversationId }) => {
-    // Relay call record to the other participant so they see it in their chat too
-    emitToUser(targetUserId, "webrtc_call_record", {
-      fromUserId: userId, type, status, duration, conversationId,
-    });
-  });
-
-
+  socket.on(
+    "webrtc_call_record",
+    ({ targetUserId, type, status, duration, conversationId }) => {
+      // Relay call record to the other participant so they see it in their chat too
+      emitToUser(targetUserId, "webrtc_call_record", {
+        fromUserId: userId,
+        type,
+        status,
+        duration,
+        conversationId,
+      });
+    },
+  );
 
   /* — Typing indicators (debounced on server) — */
   const typingTimers = new Map();
@@ -228,11 +240,17 @@ io.on("connection", (socket) => {
 
     // Auto-clear typing if client disconnects without sending isTyping=false
     if (isTyping) {
-      if (typingTimers.has(conversationId)) clearTimeout(typingTimers.get(conversationId));
-      typingTimers.set(conversationId, setTimeout(() => {
-        socket.to(conversationId).emit("user_typing", { conversationId, userId, isTyping: false });
-        typingTimers.delete(conversationId);
-      }, 5000));
+      if (typingTimers.has(conversationId))
+        clearTimeout(typingTimers.get(conversationId));
+      typingTimers.set(
+        conversationId,
+        setTimeout(() => {
+          socket
+            .to(conversationId)
+            .emit("user_typing", { conversationId, userId, isTyping: false });
+          typingTimers.delete(conversationId);
+        }, 5000),
+      );
     } else {
       if (typingTimers.has(conversationId)) {
         clearTimeout(typingTimers.get(conversationId));
@@ -246,7 +264,9 @@ io.on("connection", (socket) => {
     // Clear any pending typing timers
     typingTimers.forEach((timer, cid) => {
       clearTimeout(timer);
-      socket.to(cid).emit("user_typing", { conversationId: cid, userId, isTyping: false });
+      socket
+        .to(cid)
+        .emit("user_typing", { conversationId: cid, userId, isTyping: false });
     });
     typingTimers.clear();
 

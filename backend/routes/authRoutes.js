@@ -4,7 +4,7 @@ import { authMiddleware } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-router.post("/verify-firebase", verifyFirebase);  // called after Firebase confirms OTP
+router.post("/verify-firebase", verifyFirebase); // called after Firebase confirms OTP
 router.get("/me", authMiddleware, getMe);
 
 export default router;

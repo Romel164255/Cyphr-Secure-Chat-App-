@@ -1,11 +1,9 @@
-let chatKey=null;
+let chatKey = null;
 
-export function setChatKey(key){
-
-    chatKey=key;
+export function setChatKey(key) {
+  chatKey = key;
 }
 
-export function getChatKey(){
-
-    return chatKey;
+export function getChatKey() {
+  return chatKey;
 }

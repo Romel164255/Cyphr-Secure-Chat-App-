@@ -12,7 +12,7 @@ async function getRole(userId, conversationId) {
   const result = await pool.query(
     `SELECT role FROM conversation_members
      WHERE conversation_id = $1 AND user_id = $2`,
-    [conversationId, userId]
+    [conversationId, userId],
   );
   return result.rows[0]?.role ?? null; // null = not a member
 }
@@ -40,7 +40,9 @@ export async function createGroup(req, res) {
     }
 
     // Deduplicate and exclude the creator (they're added separately)
-    const uniqueMembers = [...new Set(members)].filter((id) => id !== req.user.id);
+    const uniqueMembers = [...new Set(members)].filter(
+      (id) => id !== req.user.id,
+    );
 
     if (uniqueMembers.length + 1 > MAX_GROUP_MEMBERS) {
       return res.status(400).json({
@@ -52,10 +54,12 @@ export async function createGroup(req, res) {
     if (uniqueMembers.length > 0) {
       const userCheck = await pool.query(
         `SELECT COUNT(*) AS cnt FROM users WHERE id = ANY($1::uuid[])`,
-        [uniqueMembers]
+        [uniqueMembers],
       );
       if (parseInt(userCheck.rows[0].cnt) !== uniqueMembers.length) {
-        return res.status(400).json({ error: "One or more member user IDs not found" });
+        return res
+          .status(400)
+          .json({ error: "One or more member user IDs not found" });
       }
     }
 
@@ -63,14 +67,14 @@ export async function createGroup(req, res) {
 
     await pool.query(
       `INSERT INTO conversations (id, title, is_group, created_by) VALUES ($1, $2, true, $3)`,
-      [conversationId, title.trim(), req.user.id]
+      [conversationId, title.trim(), req.user.id],
     );
 
     // Creator is owner
     await pool.query(
       `INSERT INTO conversation_members (conversation_id, user_id, role)
        VALUES ($1, $2, 'owner') ON CONFLICT DO NOTHING`,
-      [conversationId, req.user.id]
+      [conversationId, req.user.id],
     );
 
     // Add other members
@@ -78,11 +82,13 @@ export async function createGroup(req, res) {
       await pool.query(
         `INSERT INTO conversation_members (conversation_id, user_id, role)
          VALUES ($1, $2, 'member') ON CONFLICT DO NOTHING`,
-        [conversationId, userId]
+        [conversationId, userId],
       );
     }
 
-    res.status(201).json({ message: "Group created", conversation_id: conversationId });
+    res
+      .status(201)
+      .json({ message: "Group created", conversation_id: conversationId });
   } catch (err) {
     console.error("createGroup error:", err);
     res.status(500).json({ error: "Server error" });
@@ -110,7 +116,9 @@ export async function addGroupMember(req, res) {
     }
 
     // Verify target user exists
-    const target = await pool.query(`SELECT id FROM users WHERE id = $1`, [user_id]);
+    const target = await pool.query(`SELECT id FROM users WHERE id = $1`, [
+      user_id,
+    ]);
     if (target.rows.length === 0) {
       return res.status(404).json({ error: "User not found" });
     }
@@ -118,7 +126,7 @@ export async function addGroupMember(req, res) {
     // Check current member count
     const countResult = await pool.query(
       `SELECT COUNT(*) AS cnt FROM conversation_members WHERE conversation_id = $1`,
-      [conversationId]
+      [conversationId],
     );
     if (parseInt(countResult.rows[0].cnt) >= MAX_GROUP_MEMBERS) {
       return res.status(400).json({ error: "Group is full" });
@@ -127,7 +135,7 @@ export async function addGroupMember(req, res) {
     await pool.query(
       `INSERT INTO conversation_members (conversation_id, user_id, role)
        VALUES ($1, $2, 'member') ON CONFLICT DO NOTHING`,
-      [conversationId, user_id]
+      [conversationId, user_id],
     );
 
     res.json({ message: "Member added" });
@@ -152,7 +160,8 @@ export async function removeGroupMember(req, res) {
 
     const callerRole = await getRole(req.user.id, conversationId);
 
-    if (!callerRole) return res.status(403).json({ error: "Not a group member" });
+    if (!callerRole)
+      return res.status(403).json({ error: "Not a group member" });
     if (callerRole !== "owner" && callerRole !== "admin") {
       return res.status(403).json({ error: "Only admins can remove members" });
     }
@@ -165,12 +174,14 @@ export async function removeGroupMember(req, res) {
 
     // Admins cannot remove other admins — only the owner can
     if (targetRole === "admin" && callerRole !== "owner") {
-      return res.status(403).json({ error: "Only the owner can remove admins" });
+      return res
+        .status(403)
+        .json({ error: "Only the owner can remove admins" });
     }
 
     await pool.query(
       `DELETE FROM conversation_members WHERE conversation_id = $1 AND user_id = $2`,
-      [conversationId, user_id]
+      [conversationId, user_id],
     );
 
     res.json({ message: "Member removed" });
@@ -195,14 +206,19 @@ export async function promoteToAdmin(req, res) {
 
     const callerRole = await getRole(req.user.id, conversationId);
 
-    if (!callerRole) return res.status(403).json({ error: "Not a group member" });
+    if (!callerRole)
+      return res.status(403).json({ error: "Not a group member" });
     if (callerRole !== "owner") {
-      return res.status(403).json({ error: "Only the owner can promote admins" });
+      return res
+        .status(403)
+        .json({ error: "Only the owner can promote admins" });
     }
 
     const targetRole = await getRole(user_id, conversationId);
     if (!targetRole) {
-      return res.status(404).json({ error: "Target user is not in this group" });
+      return res
+        .status(404)
+        .json({ error: "Target user is not in this group" });
     }
 
     if (targetRole === "owner") {
@@ -212,7 +228,7 @@ export async function promoteToAdmin(req, res) {
     await pool.query(
       `UPDATE conversation_members SET role = 'admin'
        WHERE conversation_id = $1 AND user_id = $2`,
-      [conversationId, user_id]
+      [conversationId, user_id],
     );
 
     res.json({ message: "User promoted to admin" });
@@ -242,7 +258,7 @@ export async function getGroupMembers(req, res) {
        JOIN users u ON cm.user_id = u.id
        WHERE cm.conversation_id = $1
        ORDER BY CASE cm.role WHEN 'owner' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END, u.username`,
-      [conversationId]
+      [conversationId],
     );
 
     res.json(result.rows);

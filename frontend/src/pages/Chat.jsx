@@ -40,7 +40,12 @@ export default function Chat({ onLogout }) {
 }
 
 const s = {
-  app: { display: "flex", height: "100vh", overflow: "hidden", background: "var(--bg-app)" },
+  app: {
+    display: "flex",
+    height: "100vh",
+    overflow: "hidden",
+    background: "var(--bg-app)",
+  },
   sidebar: { display: "flex", flexShrink: 0 },
   main: { flex: 1, display: "flex", minWidth: 0 },
   hideMobile: {

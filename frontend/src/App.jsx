@@ -15,14 +15,19 @@ export default function App() {
 
   useEffect(() => {
     async function checkUser() {
-      if (!token) { setLoading(false); return; }
+      if (!token) {
+        setLoading(false);
+        return;
+      }
       try {
         const res = await api.get("/auth/me");
         if (res.data.username) setHasUsername(true);
       } catch {
         localStorage.removeItem("token");
         setToken(null);
-      } finally { setLoading(false); }
+      } finally {
+        setLoading(false);
+      }
     }
     checkUser();
   }, [token]);
@@ -50,16 +55,25 @@ export default function App() {
     setConfirmation(null);
   }
 
-  if (loading) return <div style={{padding:40,color:"var(--text-secondary)"}}>Loading…</div>;
+  if (loading)
+    return (
+      <div style={{ padding: 40, color: "var(--text-secondary)" }}>
+        Loading…
+      </div>
+    );
 
-  if (!token && !phone)
-    return <Login onConfirmation={handleConfirmation} />;
+  if (!token && !phone) return <Login onConfirmation={handleConfirmation} />;
 
   if (!token && phone)
-    return <VerifyOTP phone={phone} confirmation={confirmation} onLogin={handleLogin} />;
+    return (
+      <VerifyOTP
+        phone={phone}
+        confirmation={confirmation}
+        onLogin={handleLogin}
+      />
+    );
 
-  if (!hasUsername)
-    return <SetUsername onDone={() => setHasUsername(true)} />;
+  if (!hasUsername) return <SetUsername onDone={() => setHasUsername(true)} />;
 
   return <Chat onLogout={handleLogout} />;
 }

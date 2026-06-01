@@ -6,14 +6,12 @@ import { pool } from "../db.js";
 ========================= */
 
 export async function createConversation(req, res) {
-
   try {
-
     const { user_id } = req.body;
 
     if (!user_id) {
       return res.status(400).json({
-        error: "user_id required"
+        error: "user_id required",
       });
     }
 
@@ -29,12 +27,12 @@ export async function createConversation(req, res) {
       AND m2.user_id = $2
       AND c.is_group = false
       `,
-      [req.user.id, user_id]
+      [req.user.id, user_id],
     );
 
     if (existing.rows.length > 0) {
       return res.json({
-        conversation_id: existing.rows[0].id
+        conversation_id: existing.rows[0].id,
       });
     }
 
@@ -43,40 +41,33 @@ export async function createConversation(req, res) {
     await pool.query(
       `INSERT INTO conversations(id, is_group)
        VALUES ($1,false)`,
-      [conversationId]
+      [conversationId],
     );
 
     await pool.query(
       `INSERT INTO conversation_members(conversation_id,user_id)
        VALUES ($1,$2),($1,$3)`,
-      [conversationId, req.user.id, user_id]
+      [conversationId, req.user.id, user_id],
     );
 
     res.json({
-      conversation_id: conversationId
+      conversation_id: conversationId,
     });
-
   } catch (err) {
-
     console.error(err);
 
     res.status(500).json({
-      error: "Server error"
+      error: "Server error",
     });
-
   }
-
 }
-
 
 /* =========================
    GET USER CONVERSATIONS
 ========================= */
 
 export async function getUserConversations(req, res) {
-
   try {
-
     const result = await pool.query(
       `
       SELECT
@@ -128,19 +119,15 @@ export async function getUserConversations(req, res) {
         m.created_at
       ORDER BY m.created_at DESC NULLS LAST
       `,
-      [req.user.id]
+      [req.user.id],
     );
 
     res.json(result.rows);
-
   } catch (err) {
-
     console.error(err);
 
     res.status(500).json({
-      error: "Server error"
+      error: "Server error",
     });
-
   }
-
 }

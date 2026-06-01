@@ -21,7 +21,7 @@ api.interceptors.response.use(
       window.location.href = "/"; // redirect to login
     }
     return Promise.reject(error);
-  }
+  },
 );
 
 export default api;

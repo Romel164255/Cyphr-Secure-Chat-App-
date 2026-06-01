@@ -17,22 +17,37 @@ export async function verifyFirebase(req, res) {
     const decoded = await verifyFirebaseIdToken(idToken);
     const phone = decoded.phone_number;
 
-    if (!phone) return res.status(400).json({ error: "No phone number in token" });
+    if (!phone)
+      return res.status(400).json({ error: "No phone number in token" });
 
     // Find or create user
-    let result = await pool.query("SELECT * FROM users WHERE phone = $1", [phone]);
+    let result = await pool.query("SELECT * FROM users WHERE phone = $1", [
+      phone,
+    ]);
     if (result.rows.length === 0) {
       const id = crypto.randomUUID();
-      await pool.query("INSERT INTO users (id, phone) VALUES ($1, $2)", [id, phone]);
-      result = await pool.query("SELECT * FROM users WHERE phone = $1", [phone]);
+      await pool.query("INSERT INTO users (id, phone) VALUES ($1, $2)", [
+        id,
+        phone,
+      ]);
+      result = await pool.query("SELECT * FROM users WHERE phone = $1", [
+        phone,
+      ]);
     }
 
     const user = result.rows[0];
-    const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET, { expiresIn: "7d" });
+    const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET, {
+      expiresIn: "7d",
+    });
 
     res.json({
       token,
-      user: { id: user.id, phone: user.phone, username: user.username, display_name: user.display_name },
+      user: {
+        id: user.id,
+        phone: user.phone,
+        username: user.username,
+        display_name: user.display_name,
+      },
     });
   } catch (err) {
     console.error("verifyFirebase error:", err.message);
@@ -47,9 +62,10 @@ export async function getMe(req, res) {
   try {
     const result = await pool.query(
       "SELECT id, phone, username, display_name FROM users WHERE id = $1",
-      [req.user.id]
+      [req.user.id],
     );
-    if (result.rows.length === 0) return res.status(404).json({ error: "User not found" });
+    if (result.rows.length === 0)
+      return res.status(404).json({ error: "User not found" });
     res.json(result.rows[0]);
   } catch (err) {
     console.error("getMe error:", err);

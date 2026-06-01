@@ -19,7 +19,9 @@ export async function setUsername(req, res) {
     display_name = display_name ? display_name.trim() : null;
 
     if (username.length < 3) {
-      return res.status(400).json({ error: "Username must be at least 3 characters" });
+      return res
+        .status(400)
+        .json({ error: "Username must be at least 3 characters" });
     }
 
     if (username.length > MAX_USERNAME_LENGTH) {
@@ -43,7 +45,7 @@ export async function setUsername(req, res) {
     // Check if username is taken by another user
     const existing = await pool.query(
       `SELECT id FROM users WHERE username = $1 AND id != $2`,
-      [username, req.user.id]
+      [username, req.user.id],
     );
 
     if (existing.rows.length > 0) {
@@ -52,7 +54,7 @@ export async function setUsername(req, res) {
 
     await pool.query(
       `UPDATE users SET username = $1, display_name = $2 WHERE id = $3`,
-      [username, display_name, req.user.id]
+      [username, display_name, req.user.id],
     );
 
     res.json({ message: "Profile updated", username, display_name });
@@ -86,7 +88,7 @@ export async function searchUsers(req, res) {
        WHERE username ILIKE $1
          AND id != $2
        LIMIT 10`,
-      [`%${query}%`, req.user.id] // exclude the requesting user from results
+      [`%${query}%`, req.user.id], // exclude the requesting user from results
     );
 
     res.json(result.rows);

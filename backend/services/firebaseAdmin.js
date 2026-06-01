@@ -9,7 +9,7 @@ export async function verifyFirebaseIdToken(idToken) {
 
   const res = await axios.post(
     `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${process.env.FIREBASE_WEB_API_KEY}`,
-    { idToken }
+    { idToken },
   );
 
   const user = res.data.users?.[0];
