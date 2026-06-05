@@ -4,7 +4,7 @@ import dotenv from "dotenv";
 import { createServer } from "http";
 import { Server } from "socket.io";
 
-import { pool } from "./db.js";
+import { connectDB } from "./db.js";
 import { socketAuthMiddleware } from "./middleware/authMiddleware.js";
 
 import authRoutes from "./routes/authRoutes.js";
@@ -88,24 +88,21 @@ app.get("/", (_req, res) => res.json({ status: "rChat API running" }));
 app.use((_req, res) => res.status(404).json({ error: "Route not found" }));
 
 /* ─────────────────────────────
-   Socket.IO — optimized for speed
+   Socket.IO
 ───────────────────────────── */
 
 const io = new Server(server, {
   cors: corsOptions,
   transports: ["websocket", "polling"],
-  // Performance tuning
-  pingInterval: 25000, // how often to ping clients
-  pingTimeout: 10000, // how long to wait for pong
+  pingInterval: 25000,
+  pingTimeout: 10000,
   upgradeTimeout: 10000,
-  maxHttpBufferSize: 1e6, // 1MB max message
-  // Compression for larger payloads
+  maxHttpBufferSize: 1e6,
   perMessageDeflate: {
-    threshold: 1024, // only compress payloads > 1KB
+    threshold: 1024,
   },
 });
 
-/* Socket authentication */
 io.use(socketAuthMiddleware);
 
 /* ─────────────────────────────
@@ -140,7 +137,6 @@ io.on("connection", (socket) => {
   addOnline(userId, socket.id);
   broadcastOnlineUsers();
 
-  /* — Join/leave conversation rooms — */
   socket.on("join_conversation", (conversationId) => {
     if (conversationId && typeof conversationId === "string") {
       socket.join(conversationId);
@@ -151,7 +147,6 @@ io.on("connection", (socket) => {
     if (conversationId) socket.leave(conversationId);
   });
 
-  /* — Send message (broadcast to room, not sender) — */
   socket.on("send_message", (data) => {
     if (!data?.conversation_id) return;
     socket.to(data.conversation_id).emit("receive_message", {
@@ -160,7 +155,6 @@ io.on("connection", (socket) => {
     });
   });
 
-  /* — Delivery / read receipts — */
   socket.on("message_delivered", ({ message_id, conversationId }) => {
     if (!message_id || !conversationId) return;
     io.to(conversationId).emit("message_delivered", { message_id });
@@ -171,10 +165,8 @@ io.on("connection", (socket) => {
     io.to(conversationId).emit("message_read", { message_id });
   });
 
-  /* — Message delete broadcast — */
   socket.on("delete_message", ({ message_id, conversation_id }) => {
     if (!message_id || !conversation_id) return;
-    // Broadcast to everyone in the room (including sender's other tabs)
     io.to(conversation_id).emit("message_deleted", { message_id });
   });
 
@@ -186,11 +178,7 @@ io.on("connection", (socket) => {
   }
 
   socket.on("webrtc_offer", ({ targetUserId, offer, callType }) => {
-    emitToUser(targetUserId, "webrtc_offer", {
-      fromUserId: userId,
-      offer,
-      callType,
-    });
+    emitToUser(targetUserId, "webrtc_offer", { fromUserId: userId, offer, callType });
   });
 
   socket.on("webrtc_answer", ({ targetUserId, answer }) => {
@@ -198,10 +186,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("webrtc_ice_candidate", ({ targetUserId, candidate }) => {
-    emitToUser(targetUserId, "webrtc_ice_candidate", {
-      fromUserId: userId,
-      candidate,
-    });
+    emitToUser(targetUserId, "webrtc_ice_candidate", { fromUserId: userId, candidate });
   });
 
   socket.on("webrtc_reject", ({ targetUserId }) => {
@@ -212,21 +197,17 @@ io.on("connection", (socket) => {
     emitToUser(targetUserId, "webrtc_ended", { fromUserId: userId });
   });
 
-  socket.on(
-    "webrtc_call_record",
-    ({ targetUserId, type, status, duration, conversationId }) => {
-      // Relay call record to the other participant so they see it in their chat too
-      emitToUser(targetUserId, "webrtc_call_record", {
-        fromUserId: userId,
-        type,
-        status,
-        duration,
-        conversationId,
-      });
-    },
-  );
+  socket.on("webrtc_call_record", ({ targetUserId, type, status, duration, conversationId }) => {
+    emitToUser(targetUserId, "webrtc_call_record", {
+      fromUserId: userId,
+      type,
+      status,
+      duration,
+      conversationId,
+    });
+  });
 
-  /* — Typing indicators (debounced on server) — */
+  /* — Typing indicators — */
   const typingTimers = new Map();
 
   socket.on("typing", ({ conversationId, isTyping }) => {
@@ -238,18 +219,15 @@ io.on("connection", (socket) => {
       isTyping: Boolean(isTyping),
     });
 
-    // Auto-clear typing if client disconnects without sending isTyping=false
     if (isTyping) {
       if (typingTimers.has(conversationId))
         clearTimeout(typingTimers.get(conversationId));
       typingTimers.set(
         conversationId,
         setTimeout(() => {
-          socket
-            .to(conversationId)
-            .emit("user_typing", { conversationId, userId, isTyping: false });
+          socket.to(conversationId).emit("user_typing", { conversationId, userId, isTyping: false });
           typingTimers.delete(conversationId);
-        }, 5000),
+        }, 5000)
       );
     } else {
       if (typingTimers.has(conversationId)) {
@@ -259,14 +237,10 @@ io.on("connection", (socket) => {
     }
   });
 
-  /* — Disconnect — */
-  socket.on("disconnect", (reason) => {
-    // Clear any pending typing timers
+  socket.on("disconnect", () => {
     typingTimers.forEach((timer, cid) => {
       clearTimeout(timer);
-      socket
-        .to(cid)
-        .emit("user_typing", { conversationId: cid, userId, isTyping: false });
+      socket.to(cid).emit("user_typing", { conversationId: cid, userId, isTyping: false });
     });
     typingTimers.clear();
 
@@ -276,24 +250,10 @@ io.on("connection", (socket) => {
 });
 
 /* ─────────────────────────────
-   Database Check
-───────────────────────────── */
-
-async function testDB() {
-  try {
-    const res = await pool.query("SELECT NOW()");
-    console.log("Database connected:", res.rows[0].now);
-  } catch (err) {
-    console.error("Database connection error:", err.message);
-    process.exit(1);
-  }
-}
-
-/* ─────────────────────────────
    Start
 ───────────────────────────── */
 
 server.listen(PORT, async () => {
   console.log(`rChat server running on port ${PORT}`);
-  await testDB();
+  await connectDB();
 });

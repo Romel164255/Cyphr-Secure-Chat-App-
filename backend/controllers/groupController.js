@@ -1,94 +1,68 @@
-import crypto from "crypto";
-import { pool } from "../db.js";
+import mongoose from "mongoose";
+import { Conversation } from "../models/Conversation.js";
+import { User } from "../models/User.js";
 
 const MAX_TITLE_LENGTH = 100;
 const MAX_GROUP_MEMBERS = 256;
 
 /* =========================
-   HELPER — get caller's role in a group
+   HELPER — get caller's role
 ========================= */
-
 async function getRole(userId, conversationId) {
-  const result = await pool.query(
-    `SELECT role FROM conversation_members
-     WHERE conversation_id = $1 AND user_id = $2`,
-    [conversationId, userId],
+  const conv = await Conversation.findOne(
+    { _id: conversationId },
+    { members: 1 }
   );
-  return result.rows[0]?.role ?? null; // null = not a member
+  if (!conv) return null;
+  const member = conv.members.find((m) => m.user_id.toString() === userId);
+  return member?.role ?? null;
 }
 
 /* =========================
    CREATE GROUP
 ========================= */
-
 export async function createGroup(req, res) {
   try {
     const { title, members } = req.body;
 
-    if (!title || !title.trim()) {
+    if (!title || !title.trim())
       return res.status(400).json({ error: "title required" });
-    }
 
-    if (!members || !Array.isArray(members) || members.length === 0) {
+    if (!members || !Array.isArray(members) || members.length === 0)
       return res.status(400).json({ error: "members array required" });
-    }
 
-    if (title.trim().length > MAX_TITLE_LENGTH) {
-      return res.status(400).json({
-        error: `Title must be at most ${MAX_TITLE_LENGTH} characters`,
-      });
-    }
+    if (title.trim().length > MAX_TITLE_LENGTH)
+      return res.status(400).json({ error: `Title must be at most ${MAX_TITLE_LENGTH} characters` });
 
-    // Deduplicate and exclude the creator (they're added separately)
     const uniqueMembers = [...new Set(members)].filter(
-      (id) => id !== req.user.id,
+      (id) => id !== req.user.id
     );
 
-    if (uniqueMembers.length + 1 > MAX_GROUP_MEMBERS) {
-      return res.status(400).json({
-        error: `Group cannot have more than ${MAX_GROUP_MEMBERS} members`,
-      });
-    }
+    if (uniqueMembers.length + 1 > MAX_GROUP_MEMBERS)
+      return res.status(400).json({ error: `Group cannot have more than ${MAX_GROUP_MEMBERS} members` });
 
-    // Verify all member user IDs exist
+    // Verify all member IDs exist
     if (uniqueMembers.length > 0) {
-      const userCheck = await pool.query(
-        `SELECT COUNT(*) AS cnt FROM users WHERE id = ANY($1::uuid[])`,
-        [uniqueMembers],
-      );
-      if (parseInt(userCheck.rows[0].cnt) !== uniqueMembers.length) {
-        return res
-          .status(400)
-          .json({ error: "One or more member user IDs not found" });
-      }
+      const count = await User.countDocuments({
+        _id: { $in: uniqueMembers },
+      });
+      if (count !== uniqueMembers.length)
+        return res.status(400).json({ error: "One or more member user IDs not found" });
     }
 
-    const conversationId = crypto.randomUUID();
+    const memberDocs = [
+      { user_id: req.user.id, role: "owner" },
+      ...uniqueMembers.map((id) => ({ user_id: id, role: "member" })),
+    ];
 
-    await pool.query(
-      `INSERT INTO conversations (id, title, is_group, created_by) VALUES ($1, $2, true, $3)`,
-      [conversationId, title.trim(), req.user.id],
-    );
+    const conversation = await Conversation.create({
+      is_group: true,
+      title: title.trim(),
+      created_by: req.user.id,
+      members: memberDocs,
+    });
 
-    // Creator is owner
-    await pool.query(
-      `INSERT INTO conversation_members (conversation_id, user_id, role)
-       VALUES ($1, $2, 'owner') ON CONFLICT DO NOTHING`,
-      [conversationId, req.user.id],
-    );
-
-    // Add other members
-    for (const userId of uniqueMembers) {
-      await pool.query(
-        `INSERT INTO conversation_members (conversation_id, user_id, role)
-         VALUES ($1, $2, 'member') ON CONFLICT DO NOTHING`,
-        [conversationId, userId],
-      );
-    }
-
-    res
-      .status(201)
-      .json({ message: "Group created", conversation_id: conversationId });
+    res.status(201).json({ message: "Group created", conversation_id: conversation._id });
   } catch (err) {
     console.error("createGroup error:", err);
     res.status(500).json({ error: "Server error" });
@@ -98,45 +72,32 @@ export async function createGroup(req, res) {
 /* =========================
    ADD MEMBER
 ========================= */
-
 export async function addGroupMember(req, res) {
   try {
     const { conversationId } = req.params;
     const { user_id } = req.body;
 
-    if (!user_id) {
-      return res.status(400).json({ error: "user_id required" });
-    }
+    if (!user_id) return res.status(400).json({ error: "user_id required" });
 
     const role = await getRole(req.user.id, conversationId);
-
     if (!role) return res.status(403).json({ error: "Not a group member" });
-    if (role !== "owner" && role !== "admin") {
+    if (role !== "owner" && role !== "admin")
       return res.status(403).json({ error: "Only admins can add members" });
-    }
 
-    // Verify target user exists
-    const target = await pool.query(`SELECT id FROM users WHERE id = $1`, [
-      user_id,
-    ]);
-    if (target.rows.length === 0) {
-      return res.status(404).json({ error: "User not found" });
-    }
+    const target = await User.findById(user_id);
+    if (!target) return res.status(404).json({ error: "User not found" });
 
-    // Check current member count
-    const countResult = await pool.query(
-      `SELECT COUNT(*) AS cnt FROM conversation_members WHERE conversation_id = $1`,
-      [conversationId],
-    );
-    if (parseInt(countResult.rows[0].cnt) >= MAX_GROUP_MEMBERS) {
+    const conv = await Conversation.findById(conversationId);
+    if (conv.members.length >= MAX_GROUP_MEMBERS)
       return res.status(400).json({ error: "Group is full" });
-    }
 
-    await pool.query(
-      `INSERT INTO conversation_members (conversation_id, user_id, role)
-       VALUES ($1, $2, 'member') ON CONFLICT DO NOTHING`,
-      [conversationId, user_id],
+    const alreadyMember = conv.members.some(
+      (m) => m.user_id.toString() === user_id
     );
+    if (!alreadyMember) {
+      conv.members.push({ user_id, role: "member" });
+      await conv.save();
+    }
 
     res.json({ message: "Member added" });
   } catch (err) {
@@ -148,41 +109,28 @@ export async function addGroupMember(req, res) {
 /* =========================
    REMOVE MEMBER
 ========================= */
-
 export async function removeGroupMember(req, res) {
   try {
     const { conversationId } = req.params;
     const { user_id } = req.body;
 
-    if (!user_id) {
-      return res.status(400).json({ error: "user_id required" });
-    }
+    if (!user_id) return res.status(400).json({ error: "user_id required" });
 
     const callerRole = await getRole(req.user.id, conversationId);
-
-    if (!callerRole)
-      return res.status(403).json({ error: "Not a group member" });
-    if (callerRole !== "owner" && callerRole !== "admin") {
+    if (!callerRole) return res.status(403).json({ error: "Not a group member" });
+    if (callerRole !== "owner" && callerRole !== "admin")
       return res.status(403).json({ error: "Only admins can remove members" });
-    }
 
-    // Nobody can remove the owner
     const targetRole = await getRole(user_id, conversationId);
-    if (targetRole === "owner") {
+    if (targetRole === "owner")
       return res.status(403).json({ error: "Cannot remove the group owner" });
-    }
 
-    // Admins cannot remove other admins — only the owner can
-    if (targetRole === "admin" && callerRole !== "owner") {
-      return res
-        .status(403)
-        .json({ error: "Only the owner can remove admins" });
-    }
+    if (targetRole === "admin" && callerRole !== "owner")
+      return res.status(403).json({ error: "Only the owner can remove admins" });
 
-    await pool.query(
-      `DELETE FROM conversation_members WHERE conversation_id = $1 AND user_id = $2`,
-      [conversationId, user_id],
-    );
+    await Conversation.findByIdAndUpdate(conversationId, {
+      $pull: { members: { user_id: new mongoose.Types.ObjectId(user_id) } },
+    });
 
     res.json({ message: "Member removed" });
   } catch (err) {
@@ -192,43 +140,27 @@ export async function removeGroupMember(req, res) {
 }
 
 /* =========================
-   PROMOTE MEMBER TO ADMIN
+   PROMOTE TO ADMIN
 ========================= */
-
 export async function promoteToAdmin(req, res) {
   try {
     const { conversationId } = req.params;
     const { user_id } = req.body;
 
-    if (!user_id) {
-      return res.status(400).json({ error: "user_id required" });
-    }
+    if (!user_id) return res.status(400).json({ error: "user_id required" });
 
     const callerRole = await getRole(req.user.id, conversationId);
-
-    if (!callerRole)
-      return res.status(403).json({ error: "Not a group member" });
-    if (callerRole !== "owner") {
-      return res
-        .status(403)
-        .json({ error: "Only the owner can promote admins" });
-    }
+    if (!callerRole) return res.status(403).json({ error: "Not a group member" });
+    if (callerRole !== "owner")
+      return res.status(403).json({ error: "Only the owner can promote admins" });
 
     const targetRole = await getRole(user_id, conversationId);
-    if (!targetRole) {
-      return res
-        .status(404)
-        .json({ error: "Target user is not in this group" });
-    }
+    if (!targetRole) return res.status(404).json({ error: "Target user is not in this group" });
+    if (targetRole === "owner") return res.status(400).json({ error: "User is already the owner" });
 
-    if (targetRole === "owner") {
-      return res.status(400).json({ error: "User is already the owner" });
-    }
-
-    await pool.query(
-      `UPDATE conversation_members SET role = 'admin'
-       WHERE conversation_id = $1 AND user_id = $2`,
-      [conversationId, user_id],
+    await Conversation.findOneAndUpdate(
+      { _id: conversationId, "members.user_id": user_id },
+      { $set: { "members.$.role": "admin" } }
     );
 
     res.json({ message: "User promoted to admin" });
@@ -241,27 +173,31 @@ export async function promoteToAdmin(req, res) {
 /* =========================
    GET GROUP MEMBERS
 ========================= */
-
 export async function getGroupMembers(req, res) {
   try {
     const { conversationId } = req.params;
 
-    // Only members can view the member list
     const role = await getRole(req.user.id, conversationId);
-    if (!role) {
-      return res.status(403).json({ error: "Not a member of this group" });
-    }
+    if (!role) return res.status(403).json({ error: "Not a member of this group" });
 
-    const result = await pool.query(
-      `SELECT u.id, u.username, u.display_name, cm.role
-       FROM conversation_members cm
-       JOIN users u ON cm.user_id = u.id
-       WHERE cm.conversation_id = $1
-       ORDER BY CASE cm.role WHEN 'owner' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END, u.username`,
-      [conversationId],
+    const conv = await Conversation.findById(conversationId).populate(
+      "members.user_id",
+      "username display_name"
     );
 
-    res.json(result.rows);
+    const members = conv.members
+      .map((m) => ({
+        id: m.user_id._id,
+        username: m.user_id.username,
+        display_name: m.user_id.display_name,
+        role: m.role,
+      }))
+      .sort((a, b) => {
+        const order = { owner: 0, admin: 1, member: 2 };
+        return (order[a.role] - order[b.role]) || (a.username || "").localeCompare(b.username || "");
+      });
+
+    res.json(members);
   } catch (err) {
     console.error("getGroupMembers error:", err);
     res.status(500).json({ error: "Server error" });

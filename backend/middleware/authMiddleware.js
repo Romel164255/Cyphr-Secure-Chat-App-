@@ -8,10 +8,7 @@ export function authMiddleware(req, res, next) {
   }
 
   const token = authHeader.split(" ")[1];
-
-  if (!token) {
-    return res.status(401).json({ error: "Token required" });
-  }
+  if (!token) return res.status(401).json({ error: "Token required" });
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
@@ -22,17 +19,9 @@ export function authMiddleware(req, res, next) {
   }
 }
 
-/**
- * Authenticate a Socket.IO connection.
- * Attach decoded user payload to socket.user on success.
- * Call next(new Error(...)) to reject the connection.
- */
 export function socketAuthMiddleware(socket, next) {
   const token = socket.handshake.auth?.token;
-
-  if (!token) {
-    return next(new Error("Authentication required"));
-  }
+  if (!token) return next(new Error("Authentication required"));
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);

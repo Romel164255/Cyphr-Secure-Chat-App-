@@ -1,133 +1,118 @@
-import crypto from "crypto";
-import { pool } from "../db.js";
+import mongoose from "mongoose";
+import { Conversation } from "../models/Conversation.js";
+import { Message } from "../models/Message.js";
+import { User } from "../models/User.js";
 
 /* =========================
    CREATE PRIVATE CHAT
 ========================= */
-
 export async function createConversation(req, res) {
   try {
     const { user_id } = req.body;
+    if (!user_id) return res.status(400).json({ error: "user_id required" });
 
-    if (!user_id) {
-      return res.status(400).json({
-        error: "user_id required",
-      });
-    }
+    const myId = new mongoose.Types.ObjectId(req.user.id);
+    const otherId = new mongoose.Types.ObjectId(user_id);
 
-    const existing = await pool.query(
-      `
-      SELECT c.id
-      FROM conversations c
-      JOIN conversation_members m1
-      ON c.id = m1.conversation_id
-      JOIN conversation_members m2
-      ON c.id = m2.conversation_id
-      WHERE m1.user_id = $1
-      AND m2.user_id = $2
-      AND c.is_group = false
-      `,
-      [req.user.id, user_id],
-    );
-
-    if (existing.rows.length > 0) {
-      return res.json({
-        conversation_id: existing.rows[0].id,
-      });
-    }
-
-    const conversationId = crypto.randomUUID();
-
-    await pool.query(
-      `INSERT INTO conversations(id, is_group)
-       VALUES ($1,false)`,
-      [conversationId],
-    );
-
-    await pool.query(
-      `INSERT INTO conversation_members(conversation_id,user_id)
-       VALUES ($1,$2),($1,$3)`,
-      [conversationId, req.user.id, user_id],
-    );
-
-    res.json({
-      conversation_id: conversationId,
+    // Find existing 1:1 conversation
+    const existing = await Conversation.findOne({
+      is_group: false,
+      "members.user_id": { $all: [myId, otherId] },
+      $expr: { $eq: [{ $size: "$members" }, 2] },
     });
+
+    if (existing) return res.json({ conversation_id: existing._id });
+
+    const conversation = await Conversation.create({
+      is_group: false,
+      members: [
+        { user_id: myId, role: "member" },
+        { user_id: otherId, role: "member" },
+      ],
+    });
+
+    res.json({ conversation_id: conversation._id });
   } catch (err) {
     console.error(err);
-
-    res.status(500).json({
-      error: "Server error",
-    });
+    res.status(500).json({ error: "Server error" });
   }
 }
 
 /* =========================
    GET USER CONVERSATIONS
 ========================= */
-
 export async function getUserConversations(req, res) {
   try {
-    const result = await pool.query(
-      `
-      SELECT
-        c.id,
-        CASE
-          WHEN c.is_group
-          THEN c.title
-          ELSE COALESCE(other_user.display_name, other_user.username, 'Direct Chat')
-        END AS title,
-        c.is_group,
-        CASE WHEN c.is_group THEN NULL ELSE other_user.id END AS other_user_id,
-        m.content AS last_message,
-        m.iv AS last_message_iv,
-        m.created_at AS last_message_time,
-        COUNT(msg.id) AS unread_count
-      FROM conversations c
-      JOIN conversation_members cm
-      ON cm.conversation_id = c.id
-      LEFT JOIN LATERAL (
-        SELECT u.id, u.username, u.display_name
-        FROM conversation_members cm2
-        JOIN users u
-        ON u.id = cm2.user_id
-        WHERE cm2.conversation_id = c.id
-        AND cm2.user_id <> $1
-        LIMIT 1
-      ) other_user
-      ON c.is_group = false
-      LEFT JOIN LATERAL (
-        SELECT content, iv, created_at
-        FROM messages
-        WHERE conversation_id = c.id
-        ORDER BY created_at DESC
-        LIMIT 1
-      ) m ON true
-      LEFT JOIN messages msg
-      ON msg.conversation_id = c.id
-      AND msg.id > cm.last_read_message_id
-      WHERE cm.user_id = $1
-      GROUP BY
-        c.id,
-        c.is_group,
-        c.title,
-        other_user.id,
-        other_user.display_name,
-        other_user.username,
-        m.content,
-        m.iv,
-        m.created_at
-      ORDER BY m.created_at DESC NULLS LAST
-      `,
-      [req.user.id],
+    const myId = new mongoose.Types.ObjectId(req.user.id);
+
+    // Get all conversations where user is a member
+    const conversations = await Conversation.find({
+      "members.user_id": myId,
+    }).lean();
+
+    const results = await Promise.all(
+      conversations.map(async (conv) => {
+        // Get last message
+        const lastMsg = await Message.findOne({ conversation_id: conv._id })
+          .sort({ createdAt: -1 })
+          .lean();
+
+        // Get unread count (messages after last_read_message_id)
+        const myMember = conv.members.find(
+          (m) => m.user_id.toString() === req.user.id
+        );
+        const lastReadId = myMember?.last_read_message_id;
+
+        const unreadCount = lastReadId
+          ? await Message.countDocuments({
+              conversation_id: conv._id,
+              _id: { $gt: lastReadId },
+              sender_id: { $ne: myId },
+            })
+          : await Message.countDocuments({
+              conversation_id: conv._id,
+              sender_id: { $ne: myId },
+            });
+
+        // For DMs, resolve the other user's name
+        let title = conv.title;
+        let other_user_id = null;
+        if (!conv.is_group) {
+          const otherMember = conv.members.find(
+            (m) => m.user_id.toString() !== req.user.id
+          );
+          if (otherMember) {
+            const otherUser = await User.findById(otherMember.user_id).select(
+              "username display_name"
+            );
+            title = otherUser?.display_name || otherUser?.username || "Direct Chat";
+            other_user_id = otherMember.user_id;
+          }
+        }
+
+        return {
+          id: conv._id,
+          title,
+          is_group: conv.is_group,
+          other_user_id,
+          last_message: lastMsg?.content ?? null,
+          last_message_iv: lastMsg?.iv ?? null,
+          last_message_time: lastMsg?.createdAt ?? null,
+          unread_count: unreadCount,
+        };
+      })
     );
 
-    res.json(result.rows);
+    // Sort by last message time descending
+    results.sort((a, b) => {
+      if (!a.last_message_time) return 1;
+      if (!b.last_message_time) return -1;
+      return new Date(b.last_message_time) - new Date(a.last_message_time);
+    });
+
+    res.json(results);
   } catch (err) {
     console.error(err);
-
-    res.status(500).json({
-      error: "Server error",
-    });
+    res.status(500).json({ error: "Server error" });
   }
 }
