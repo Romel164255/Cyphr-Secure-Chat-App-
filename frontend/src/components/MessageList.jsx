@@ -446,34 +446,101 @@ export default function MessageList({ conversationId }) {
                   >
                     ⋮
                   </button>
-                  {menuOpen === msg.id && (
-                    <div style={s.popup}>
-                      <button
-                        style={s.deleteBtn}
-                        onClick={() => deleteMessage(msg.id)}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
-              <div>
-                <MessageContent content={msg.content} deleted={msg.deleted} deleted_at={msg.deleted_at} />
-                <div style={s.time}>
-                  {formatTime(msg.created_at || msg.createdAt)}
-                  {msg.optimistic && (
-                    <span style={{ marginLeft: 4, opacity: 0.4 }}>✓</span>
-                  )}
-                </div>
-              </div>
-            </div>
+                  if (typeof content === "string" && content.startsWith(AUDIO_PAYLOAD_PREFIX)) {
+                    const encoded = content.slice(AUDIO_PAYLOAD_PREFIX.length);
+                    const splitIndex = encoded.indexOf(";base64,");
+                    if (splitIndex === -1) return <span>[Invalid audio]</span>;
+                    const mimeType = encoded.slice(0, splitIndex) || "audio/webm";
+                    const base64Data = encoded.slice(splitIndex + ";base64,".length);
+                    const src = `data:${mimeType};base64,${base64Data}`;
+                    return <InlineAudio src={src} />;
+                  }
+                  if (typeof content === "string" && content.startsWith("audio:")) {
+                    const src = content.slice(6);
+                    return <InlineAudio src={src} />;
+                  }
           </div>
         );
       })}
 
       <div ref={bottomRef} />
     </div>
+
+                /* ── Inline audio player with simple WhatsApp-like animation ── */
+                function InlineAudio({ src }) {
+                  const [playing, setPlaying] = useState(false);
+                  const audioRef = useRef(null);
+                  const toggle = useCallback(() => {
+                    const a = audioRef.current;
+                    if (!a) return;
+                    if (a.paused) {
+                      a.play().catch(() => {});
+                    } else {
+                      a.pause();
+                    }
+                  }, []);
+
+                  useEffect(() => {
+                    const a = audioRef.current;
+                    if (!a) return;
+                    function onPlay() {
+                      setPlaying(true);
+                    }
+                    function onPause() {
+                      setPlaying(false);
+                    }
+                    function onEnded() {
+                      setPlaying(false);
+                      a.currentTime = 0;
+                    }
+                    a.addEventListener("play", onPlay);
+                    a.addEventListener("pause", onPause);
+                    a.addEventListener("ended", onEnded);
+                    return () => {
+                      a.removeEventListener("play", onPlay);
+                      a.removeEventListener("pause", onPause);
+                      a.removeEventListener("ended", onEnded);
+                    };
+                  }, []);
+
+                  const barStyle = (i) => ({
+                    width: 4,
+                    height: 8 + ((i + 1) % 4) * 6,
+                    margin: "0 3px",
+                    background: playing ? "var(--accent, #4dd8ff)" : "rgba(255,255,255,0.12)",
+                    borderRadius: 2,
+                    transformOrigin: "bottom",
+                    transition: "height .12s linear",
+                    animation: playing ? `bounce 700ms ${i * 80}ms infinite ease-in-out` : "none",
+                  });
+
+                  return (
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <button
+                        onClick={toggle}
+                        style={{
+                          width: 36,
+                          height: 36,
+                          borderRadius: 18,
+                          border: "none",
+                          background: playing ? "var(--accent)" : "rgba(255,255,255,0.06)",
+                          color: "#fff",
+                          cursor: "pointer",
+                        }}
+                        aria-label={playing ? "Pause" : "Play"}
+                      >
+                        {playing ? "❚❚" : "▶"}
+                      </button>
+                      <div style={{ display: "flex", alignItems: "flex-end" }}>
+                        {[0, 1, 2, 3, 4].map((i) => (
+                          <div key={i} style={barStyle(i)} />
+                        ))}
+                      </div>
+                      <audio ref={audioRef} src={src} preload="metadata" style={{ display: "none" }} />
+                      <style>{`@keyframes bounce{0%{transform:scaleY(.4)}50%{transform:scaleY(1)}100%{transform:scaleY(.4)}}`}</style>
+                    </div>
+                  );
+                }
   );
 }
 

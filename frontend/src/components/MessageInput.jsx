@@ -116,16 +116,38 @@ export default function MessageInput({ conversationId }) {
     async (blob) => {
       if (!blob || blob.size === 0) return;
       const mimeType = blob.type || "audio/webm";
-      const base64Audio = arrayBufferToBase64(await blob.arrayBuffer());
-      const payload = `${AUDIO_PAYLOAD_PREFIX}${mimeType};base64,${base64Audio}`;
-      const encrypted = await encryptMessage(payload, conversationId);
-      const res = await api.post("/audio/upload", {
-        conversation_id: conversationId,
-        content: encrypted.ciphertext,
-        iv: encrypted.iv,
+      // Show optimistic audio message immediately using a local blob URL
+      const tempId = `temp_audio_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+      const localUrl = URL.createObjectURL(blob);
+      // Dispatch optimistic message so UI updates instantly
+      dispatch("chatty:message_optimistic", {
+        tempId,
+        plaintext: `audio:${localUrl}`,
+        conversationId,
       });
-      getSocket()?.emit("send_message", res.data);
-      dispatch("chatty:message_sent", { plaintext: payload, data: res.data });
+
+      try {
+        const base64Audio = arrayBufferToBase64(await blob.arrayBuffer());
+        const payload = `${AUDIO_PAYLOAD_PREFIX}${mimeType};base64,${base64Audio}`;
+        const encrypted = await encryptMessage(payload, conversationId);
+        const res = await api.post("/audio/upload", {
+          conversation_id: conversationId,
+          content: encrypted.ciphertext,
+          iv: encrypted.iv,
+        });
+        getSocket()?.emit("send_message", res.data);
+        // Replace optimistic with confirmed server message
+        dispatch("chatty:message_confirmed", { tempId, data: res.data });
+        // Notify other UI listeners
+        dispatch("chatty:message_sent", { plaintext: payload, data: res.data });
+      } catch (err) {
+        console.error("[audio send]", err);
+        // Remove optimistic message on failure
+        dispatch("chatty:message_failed", { tempId });
+      } finally {
+        // revoke local blob URL after short delay to avoid breaking playback
+        setTimeout(() => URL.revokeObjectURL(localUrl), 5000);
+      }
     },
     [conversationId],
   );
