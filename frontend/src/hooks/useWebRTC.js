@@ -4,12 +4,11 @@ import { getSocket } from "../services/socket";
 // STUN = discovers public IP (free, works ~60% of the time)
 // TURN = relays traffic when direct connection fails (critical for India/mobile networks)
 // These are free public TURN servers from Open Relay (metered.ca)
-const ICE_SERVERS = {
+const ICE_CONFIG = {
   iceServers: [
     { urls: "stun:stun.l.google.com:19302" },
     { urls: "stun:stun1.l.google.com:19302" },
     { urls: "stun:stun2.l.google.com:19302" },
-    // Free TURN relay — needed for symmetric NAT (mobile networks, most ISPs in India)
     {
       urls: "turn:openrelay.metered.ca:80",
       username: "openrelayproject",
@@ -26,6 +25,7 @@ const ICE_SERVERS = {
       credential: "openrelayproject",
     },
   ],
+  sdpSemantics: "unified-plan",
 };
 
 export function useWebRTC({ onCallEnded, onCallRecord } = {}) {
@@ -74,9 +74,15 @@ export function useWebRTC({ onCallEnded, onCallRecord } = {}) {
   }, []);
 
   const createPC = useCallback(
-    (targetId) => {
-      const pc = new RTCPeerConnection(ICE_SERVERS);
+    (targetId, type) => {
+      const pc = new RTCPeerConnection(ICE_CONFIG);
       pcRef.current = pc;
+
+      // Ensure robust negotiation in Unified Plan mode
+      pc.addTransceiver("audio", { direction: "sendrecv" });
+      if (type === "video") {
+        pc.addTransceiver("video", { direction: "sendrecv" });
+      }
 
       pc.onicecandidate = ({ candidate }) => {
         if (candidate) {
@@ -129,13 +135,29 @@ export function useWebRTC({ onCallEnded, onCallRecord } = {}) {
       setCallState("calling");
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          audio: true,
-          video: type === "video" ? { width: 1280, height: 720 } : false,
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            sampleRate: 48000,
+            channelCount: 2,
+          },
+          video:
+            type === "video"
+              ? {
+                  width: { ideal: 1280 },
+                  height: { ideal: 720 },
+                  frameRate: { ideal: 30, max: 30 },
+                  facingMode: "user",
+                }
+              : false,
         });
         localStreamRef.current = stream;
-        const pc = createPC(targetId);
-        stream.getTracks().forEach((t) => pc.addTrack(t, stream));
-        const offer = await pc.createOffer();
+        const pc = createPC(targetId, type);
+        stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+        const offer = await pc.createOffer({
+          offerToReceiveAudio: true,
+          offerToReceiveVideo: type === "video",
+        });
         await pc.setLocalDescription(offer);
         getSocket()?.emit("webrtc_offer", {
           targetUserId: targetId,
@@ -174,13 +196,26 @@ export function useWebRTC({ onCallEnded, onCallRecord } = {}) {
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-        video: type === "video" ? { width: 1280, height: 720 } : false,
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          sampleRate: 48000,
+          channelCount: 2,
+        },
+        video:
+          type === "video"
+            ? {
+                width: { ideal: 1280 },
+                height: { ideal: 720 },
+                frameRate: { ideal: 30, max: 30 },
+                facingMode: "user",
+              }
+            : false,
       });
       localStreamRef.current = stream;
 
-      const pc = createPC(targetId);
-      stream.getTracks().forEach((t) => pc.addTrack(t, stream));
+      const pc = createPC(targetId, type);
+      stream.getTracks().forEach((track) => pc.addTrack(track, stream));
 
       // 1. Set remote description (the offer)
       await pc.setRemoteDescription(new RTCSessionDescription(pending));

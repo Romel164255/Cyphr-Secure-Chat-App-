@@ -61,6 +61,9 @@ export function ActiveCallScreen({
       el.srcObject = remoteStream;
       el.play().catch(() => {}); // autoplay policy
     }
+    return () => {
+      if (el) el.srcObject = null;
+    };
   }, [remoteStream]);
 
   /* Attach local stream to small preview (video calls) */
@@ -71,6 +74,9 @@ export function ActiveCallScreen({
       el.srcObject = localStream;
       el.play().catch(() => {});
     }
+    return () => {
+      if (el) el.srcObject = null;
+    };
   }, [localStream]);
 
   /* Attach remote stream to audio element — covers voice calls AND the audio
@@ -82,6 +88,9 @@ export function ActiveCallScreen({
       el.srcObject = remoteStream;
       el.play().catch(() => {});
     }
+    return () => {
+      if (el) el.srcObject = null;
+    };
   }, [remoteStream]);
 
   const isVideo = callType === "video";
@@ -106,7 +115,13 @@ export function ActiveCallScreen({
               ref={remoteVideoRef}
               autoPlay
               playsInline
-              style={{ width: "100%", display: "block", borderRadius: 12 }}
+              style={{
+                width: "100%",
+                display: "block",
+                borderRadius: 12,
+                objectFit: "cover",
+                background: "#000",
+              }}
             />
             {/* Local video (pip) */}
             <video
@@ -119,8 +134,11 @@ export function ActiveCallScreen({
                 bottom: 10,
                 right: 10,
                 width: 110,
+                height: 78,
                 borderRadius: 8,
                 border: "2px solid rgba(255,255,255,0.2)",
+                objectFit: "cover",
+                background: "#111",
               }}
             />
           </div>
