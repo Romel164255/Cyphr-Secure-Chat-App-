@@ -84,10 +84,12 @@ export async function getMessages(req, res) {
     const formatted = messages.reverse().map((m) => ({
       id: m._id,
       sender_id: m.sender_id._id,
-      content: m.content,
-      iv: m.iv,
+      content: m.deleted ? "[deleted]" : m.content,
+      iv: m.deleted ? null : m.iv,
       status: m.status,
       created_at: m.createdAt,
+      deleted: m.deleted || false,
+      deleted_at: m.deleted_at || null,
       sender_name: m.sender_id.display_name || m.sender_id.username,
     }));
 
@@ -143,21 +145,25 @@ export async function markConversationRead(req, res) {
 }
 
 /* =========================
-   DELETE MESSAGE
+   DELETE MESSAGE (soft-delete)
 ========================= */
 export async function deleteMessage(req, res) {
   try {
     const { messageId } = req.params;
 
-    const result = await Message.findOneAndDelete({
-      _id: messageId,
-      sender_id: req.user.id,
-    });
+    const result = await Message.findOneAndUpdate(
+      { _id: messageId, sender_id: req.user.id, deleted: { $ne: true } },
+      { deleted: true, deleted_at: new Date() },
+      { new: true }
+    );
 
     if (!result)
       return res.status(404).json({ error: "Message not found or unauthorized" });
 
-    return res.json({ message: "Message deleted" });
+    return res.json({
+      message: "Message deleted",
+      deleted_at: result.deleted_at,
+    });
   } catch (err) {
     console.error("deleteMessage:", err);
     return res.status(500).json({ error: "Server error" });

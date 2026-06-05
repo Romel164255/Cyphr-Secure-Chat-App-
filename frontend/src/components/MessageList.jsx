@@ -21,6 +21,14 @@ function formatTime(ts) {
   });
 }
 
+function formatDeletedAt(ts) {
+  if (!ts) return "";
+  const d = new Date(ts);
+  const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const date = d.toLocaleDateString([], { month: "short", day: "numeric" });
+  return `Deleted ${date} at ${time}`;
+}
+
 function fmtDuration(secs) {
   if (!secs || secs < 1) return "";
   const m = Math.floor(secs / 60);
@@ -110,11 +118,16 @@ function CallRecordBubble({ type, status, duration, isMine }) {
 }
 
 /* ── Message content renderer ── */
-function MessageContent({ content, deleted }) {
+function MessageContent({ content, deleted, deleted_at }) {
   if (deleted) {
     return (
       <span style={{ fontStyle: "italic", color: "#888" }}>
         🚫 This message was deleted
+        {deleted_at && (
+          <span style={{ fontSize: 10, display: "block", marginTop: 2, color: "#666" }}>
+            {formatDeletedAt(deleted_at)}
+          </span>
+        )}
       </span>
     );
   }
@@ -183,17 +196,42 @@ export default function MessageList({ conversationId }) {
   const bottomRef = useRef();
   const menuRef = useRef(null);
 
-  /* ── Load + decrypt messages ── */
+  /* ── Load + decrypt messages + call logs ── */
   const load = useCallback(async (convId) => {
     setLoading(true);
     try {
-      const res = await api.get(`/messages/${convId}`);
-      setMessages(res.data); // render immediately (fast)
-      setLoading(false);
-      const decrypted = await Promise.all(
-        res.data.map((m) => tryDecrypt(m, convId)),
+      const [msgRes, callRes] = await Promise.all([
+        api.get(`/messages/${convId}`),
+        api.get(`/calls/${convId}`).catch(() => ({ data: [] })),
+      ]);
+
+      // Tag call logs so renderer knows
+      const callItems = callRes.data.map((c) => ({
+        id: `calllog_${c.id}`,
+        _callRecord: true,
+        callType: c.call_type,
+        callStatus: c.status,
+        callDuration: c.duration_seconds,
+        isMine: false, // will be resolved below via myId
+        _initiator_id: String(c.initiator_id),
+        created_at: c.created_at,
+      }));
+
+      const combined = [...msgRes.data, ...callItems].sort(
+        (a, b) => new Date(a.created_at) - new Date(b.created_at)
       );
-      setMessages(decrypted); // swap in decrypted text
+
+      setMessages(combined);
+      setLoading(false);
+
+      const decrypted = await Promise.all(
+        msgRes.data.map((m) => tryDecrypt(m, convId)),
+      );
+      // Re-merge with call items after decryption
+      const decryptedCombined = [...decrypted, ...callItems].sort(
+        (a, b) => new Date(a.created_at) - new Date(b.created_at)
+      );
+      setMessages(decryptedCombined);
     } catch (err) {
       console.error("[MessageList load]", err);
       setLoading(false);
@@ -349,12 +387,13 @@ export default function MessageList({ conversationId }) {
 
         /* ── Call record entry ── */
         if (msg._callRecord) {
+          const callIsMine = msg.isMine || (msg._initiator_id && msg._initiator_id === String(myId));
           return (
             <div
               key={msg.id}
               style={{
                 display: "flex",
-                justifyContent: msg.isMine ? "flex-end" : "flex-start",
+                justifyContent: callIsMine ? "flex-end" : "flex-start",
                 marginBottom: 12,
               }}
             >
@@ -363,12 +402,12 @@ export default function MessageList({ conversationId }) {
                   type={msg.callType}
                   status={msg.callStatus}
                   duration={msg.callDuration}
-                  isMine={msg.isMine}
+                  isMine={callIsMine}
                 />
                 <div
                   style={{
                     ...s.time,
-                    textAlign: msg.isMine ? "right" : "left",
+                    textAlign: callIsMine ? "right" : "left",
                     marginTop: 4,
                   }}
                 >
@@ -420,7 +459,7 @@ export default function MessageList({ conversationId }) {
                 </div>
               )}
               <div>
-                <MessageContent content={msg.content} deleted={msg.deleted} />
+                <MessageContent content={msg.content} deleted={msg.deleted} deleted_at={msg.deleted_at} />
                 <div style={s.time}>
                   {formatTime(msg.created_at || msg.createdAt)}
                   {msg.optimistic && (

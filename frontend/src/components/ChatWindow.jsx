@@ -27,7 +27,7 @@ export default function ChatWindow({
 
   /* ── Call record: fires when a call ends (either side) ── */
   const handleCallRecord = useCallback(
-    (type, status, duration, isInitiator) => {
+    async (type, status, duration, isInitiator) => {
       // Show in local chat immediately
       dispatch("chatty:call_record", {
         type,
@@ -36,6 +36,20 @@ export default function ChatWindow({
         isMine: isInitiator,
         conversationId,
       });
+
+      // Persist to database (only the initiator saves — avoids duplicate logs)
+      if (isInitiator) {
+        try {
+          await api.post("/calls", {
+            conversation_id: conversationId,
+            call_type: type,
+            status,
+            duration_seconds: duration || 0,
+          });
+        } catch (err) {
+          console.warn("[CallLog] failed to save:", err);
+        }
+      }
 
       // Tell the other person via socket so they see it too
       if (otherUserId) {
@@ -190,18 +204,16 @@ export default function ChatWindow({
         {!isGroup && otherUserId && (
           <>
             <button
-              className="header-btn"
+              className="header-btn call-btn"
               title="Voice call"
               onClick={() => startCall(otherUserId, "audio")}
-              style={iconBtnStyle}
             >
               <IoCall size={20} />
             </button>
             <button
-              className="header-btn"
+              className="header-btn call-btn"
               title="Video call"
               onClick={() => startCall(otherUserId, "video")}
-              style={iconBtnStyle}
             >
               <IoVideocam size={21} />
             </button>
@@ -263,9 +275,3 @@ export default function ChatWindow({
   );
 }
 
-const iconBtnStyle = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  color: "var(--text-secondary)",
-};
