@@ -137,22 +137,12 @@ function MessageContent({ content, deleted, deleted_at }) {
     if (splitIndex === -1) return <span>[Invalid audio]</span>;
     const mimeType = encoded.slice(0, splitIndex) || "audio/webm";
     const base64Data = encoded.slice(splitIndex + ";base64,".length);
-    return (
-      <audio
-        controls
-        src={`data:${mimeType};base64,${base64Data}`}
-        style={{ maxWidth: "100%", minWidth: 220 }}
-      />
-    );
+    const src = `data:${mimeType};base64,${base64Data}`;
+    return <InlineAudio src={src} />;
   }
   if (typeof content === "string" && content.startsWith("audio:")) {
-    return (
-      <audio
-        controls
-        src={content.slice(6)}
-        style={{ maxWidth: "100%", minWidth: 220 }}
-      />
-    );
+    const src = content.slice(6);
+    return <InlineAudio src={src} />;
   }
   return (
     <span style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
@@ -160,6 +150,8 @@ function MessageContent({ content, deleted, deleted_at }) {
     </span>
   );
 }
+
+
 
 /* ── Loading skeleton ── */
 function MessageSkeleton({ isMine }) {
@@ -446,19 +438,7 @@ export default function MessageList({ conversationId }) {
                   >
                     ⋮
                   </button>
-                  if (typeof content === "string" && content.startsWith(AUDIO_PAYLOAD_PREFIX)) {
-                    const encoded = content.slice(AUDIO_PAYLOAD_PREFIX.length);
-                    const splitIndex = encoded.indexOf(";base64,");
-                    if (splitIndex === -1) return <span>[Invalid audio]</span>;
-                    const mimeType = encoded.slice(0, splitIndex) || "audio/webm";
-                    const base64Data = encoded.slice(splitIndex + ";base64,".length);
-                    const src = `data:${mimeType};base64,${base64Data}`;
-                    return <InlineAudio src={src} />;
-                  }
-                  if (typeof content === "string" && content.startsWith("audio:")) {
-                    const src = content.slice(6);
-                    return <InlineAudio src={src} />;
-                  }
+                  
           </div>
         );
       })}
@@ -538,11 +518,9 @@ export default function MessageList({ conversationId }) {
                       </div>
                       <audio ref={audioRef} src={src} preload="metadata" style={{ display: "none" }} />
                       <style>{`@keyframes bounce{0%{transform:scaleY(.4)}50%{transform:scaleY(1)}100%{transform:scaleY(.4)}}`}</style>
-                    </div>
-                  );
-                }
-  );
-}
+                          </div>
+                        );
+                      }
 
 const s = {
   list: { flex: 1, overflowY: "auto", padding: "12px 16px" },
