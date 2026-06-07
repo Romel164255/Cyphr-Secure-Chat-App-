@@ -124,7 +124,14 @@ function MessageContent({ content, deleted, deleted_at }) {
       <span style={{ fontStyle: "italic", color: "#888" }}>
         🚫 This message was deleted
         {deleted_at && (
-          <span style={{ fontSize: 10, display: "block", marginTop: 2, color: "#666" }}>
+          <span
+            style={{
+              fontSize: 10,
+              display: "block",
+              marginTop: 2,
+              color: "#666",
+            }}
+          >
             {formatDeletedAt(deleted_at)}
           </span>
         )}
@@ -150,8 +157,6 @@ function MessageContent({ content, deleted, deleted_at }) {
     </span>
   );
 }
-
-
 
 /* ── Loading skeleton ── */
 function MessageSkeleton({ isMine }) {
@@ -210,7 +215,7 @@ export default function MessageList({ conversationId }) {
       }));
 
       const combined = [...msgRes.data, ...callItems].sort(
-        (a, b) => new Date(a.created_at) - new Date(b.created_at)
+        (a, b) => new Date(a.created_at) - new Date(b.created_at),
       );
 
       setMessages(combined);
@@ -221,7 +226,7 @@ export default function MessageList({ conversationId }) {
       );
       // Re-merge with call items after decryption
       const decryptedCombined = [...decrypted, ...callItems].sort(
-        (a, b) => new Date(a.created_at) - new Date(b.created_at)
+        (a, b) => new Date(a.created_at) - new Date(b.created_at),
       );
       setMessages(decryptedCombined);
     } catch (err) {
@@ -379,7 +384,9 @@ export default function MessageList({ conversationId }) {
 
         /* ── Call record entry ── */
         if (msg._callRecord) {
-          const callIsMine = msg.isMine || (msg._initiator_id && msg._initiator_id === String(myId));
+          const callIsMine =
+            msg.isMine ||
+            (msg._initiator_id && msg._initiator_id === String(myId));
           return (
             <div
               key={msg.id}
@@ -438,129 +445,158 @@ export default function MessageList({ conversationId }) {
                   >
                     ⋮
                   </button>
-                  
+
+                  {menuOpen === msg.id && (
+                    <div style={s.popup}>
+                      <button
+                        style={s.deleteBtn}
+                        onClick={() => deleteMessage(msg.id)}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+              <MessageContent
+                content={msg.content}
+                deleted={msg.deleted}
+                deleted_at={msg.deleted_at}
+              />
+
+              <div style={s.time}>{formatTime(msg.created_at)}</div>
+            </div>
           </div>
         );
       })}
 
       <div ref={bottomRef} />
     </div>
+  );
 
-                /* ── Inline audio player with simple WhatsApp-like animation ── */
-                function InlineAudio({ src }) {
-                  const [playing, setPlaying] = useState(false);
-                  const audioRef = useRef(null);
-                  const toggle = useCallback(() => {
-                    const a = audioRef.current;
-                    if (!a) return;
-                    if (a.paused) {
-                      a.play().catch(() => {});
-                    } else {
-                      a.pause();
-                    }
-                  }, []);
+  /* ── Inline audio player with simple WhatsApp-like animation ── */
+  function InlineAudio({ src }) {
+    const [playing, setPlaying] = useState(false);
+    const audioRef = useRef(null);
+    const toggle = useCallback(() => {
+      const a = audioRef.current;
+      if (!a) return;
+      if (a.paused) {
+        a.play().catch(() => {});
+      } else {
+        a.pause();
+      }
+    }, []);
 
-                  useEffect(() => {
-                    const a = audioRef.current;
-                    if (!a) return;
-                    function onPlay() {
-                      setPlaying(true);
-                    }
-                    function onPause() {
-                      setPlaying(false);
-                    }
-                    function onEnded() {
-                      setPlaying(false);
-                      a.currentTime = 0;
-                    }
-                    a.addEventListener("play", onPlay);
-                    a.addEventListener("pause", onPause);
-                    a.addEventListener("ended", onEnded);
-                    return () => {
-                      a.removeEventListener("play", onPlay);
-                      a.removeEventListener("pause", onPause);
-                      a.removeEventListener("ended", onEnded);
-                    };
-                  }, []);
+    useEffect(() => {
+      const a = audioRef.current;
+      if (!a) return;
+      function onPlay() {
+        setPlaying(true);
+      }
+      function onPause() {
+        setPlaying(false);
+      }
+      function onEnded() {
+        setPlaying(false);
+        a.currentTime = 0;
+      }
+      a.addEventListener("play", onPlay);
+      a.addEventListener("pause", onPause);
+      a.addEventListener("ended", onEnded);
+      return () => {
+        a.removeEventListener("play", onPlay);
+        a.removeEventListener("pause", onPause);
+        a.removeEventListener("ended", onEnded);
+      };
+    }, []);
 
-                  const barStyle = (i) => ({
-                    width: 4,
-                    height: 8 + ((i + 1) % 4) * 6,
-                    margin: "0 3px",
-                    background: playing ? "var(--accent, #4dd8ff)" : "rgba(255,255,255,0.12)",
-                    borderRadius: 2,
-                    transformOrigin: "bottom",
-                    transition: "height .12s linear",
-                    animation: playing ? `bounce 700ms ${i * 80}ms infinite ease-in-out` : "none",
-                  });
+    const barStyle = (i) => ({
+      width: 4,
+      height: 8 + ((i + 1) % 4) * 6,
+      margin: "0 3px",
+      background: playing ? "var(--accent, #4dd8ff)" : "rgba(255,255,255,0.12)",
+      borderRadius: 2,
+      transformOrigin: "bottom",
+      transition: "height .12s linear",
+      animation: playing
+        ? `bounce 700ms ${i * 80}ms infinite ease-in-out`
+        : "none",
+    });
 
-                  return (
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <button
-                        onClick={toggle}
-                        style={{
-                          width: 36,
-                          height: 36,
-                          borderRadius: 18,
-                          border: "none",
-                          background: playing ? "var(--accent)" : "rgba(255,255,255,0.06)",
-                          color: "#fff",
-                          cursor: "pointer",
-                        }}
-                        aria-label={playing ? "Pause" : "Play"}
-                      >
-                        {playing ? "❚❚" : "▶"}
-                      </button>
-                      <div style={{ display: "flex", alignItems: "flex-end" }}>
-                        {[0, 1, 2, 3, 4].map((i) => (
-                          <div key={i} style={barStyle(i)} />
-                        ))}
-                      </div>
-                      <audio ref={audioRef} src={src} preload="metadata" style={{ display: "none" }} />
-                      <style>{`@keyframes bounce{0%{transform:scaleY(.4)}50%{transform:scaleY(1)}100%{transform:scaleY(.4)}}`}</style>
-                          </div>
-                        );
-                      }
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <button
+          onClick={toggle}
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: 18,
+            border: "none",
+            background: playing ? "var(--accent)" : "rgba(255,255,255,0.06)",
+            color: "#fff",
+            cursor: "pointer",
+          }}
+          aria-label={playing ? "Pause" : "Play"}
+        >
+          {playing ? "❚❚" : "▶"}
+        </button>
+        <div style={{ display: "flex", alignItems: "flex-end" }}>
+          {[0, 1, 2, 3, 4].map((i) => (
+            <div key={i} style={barStyle(i)} />
+          ))}
+        </div>
+        <audio
+          ref={audioRef}
+          src={src}
+          preload="metadata"
+          style={{ display: "none" }}
+        />
+        <style>{`@keyframes bounce{0%{transform:scaleY(.4)}50%{transform:scaleY(1)}100%{transform:scaleY(.4)}}`}</style>
+      </div>
+    );
+  }
 
-const s = {
-  list: { flex: 1, overflowY: "auto", padding: "12px 16px" },
-  bubble: {
-    position: "relative",
-    padding: "10px 14px",
-    maxWidth: "70%",
-    borderRadius: 16,
-    overflow: "visible",
-  },
-  bubbleMe: { background: "var(--bg-bubble-me)", marginRight: "35px" },
-  bubbleThem: { background: "var(--bg-bubble-them)" },
-  menuWrap: {
-    position: "absolute",
-    top: "50%",
-    right: "-32px",
-    transform: "translateY(-50%)",
-  },
-  menuBtn: {
-    background: "transparent",
-    border: "none",
-    fontSize: 18,
-    cursor: "pointer",
-    color: "var(--text-muted)",
-  },
-  popup: {
-    position: "absolute",
-    top: 30,
-    right: 0,
-    padding: 6,
-    background: "var(--bg-header)",
-    border: "1px solid var(--border)",
-    borderRadius: 10,
-    zIndex: 999,
-  },
-  deleteBtn: {
-    background: "transparent",
-    border: "none",
-    cursor: "pointer",
-    color: "#ff6666",
-  },
-  time: { fontSize: 11, marginTop: 4, textAlign: "right", color: "#888" },
-};
+  const s = {
+    list: { flex: 1, overflowY: "auto", padding: "12px 16px" },
+    bubble: {
+      position: "relative",
+      padding: "10px 14px",
+      maxWidth: "70%",
+      borderRadius: 16,
+      overflow: "visible",
+    },
+    bubbleMe: { background: "var(--bg-bubble-me)", marginRight: "35px" },
+    bubbleThem: { background: "var(--bg-bubble-them)" },
+    menuWrap: {
+      position: "absolute",
+      top: "50%",
+      right: "-32px",
+      transform: "translateY(-50%)",
+    },
+    menuBtn: {
+      background: "transparent",
+      border: "none",
+      fontSize: 18,
+      cursor: "pointer",
+      color: "var(--text-muted)",
+    },
+    popup: {
+      position: "absolute",
+      top: 30,
+      right: 0,
+      padding: 6,
+      background: "var(--bg-header)",
+      border: "1px solid var(--border)",
+      borderRadius: 10,
+      zIndex: 999,
+    },
+    deleteBtn: {
+      background: "transparent",
+      border: "none",
+      cursor: "pointer",
+      color: "#ff6666",
+    },
+    time: { fontSize: 11, marginTop: 4, textAlign: "right", color: "#888" },
+  };
+}

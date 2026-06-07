@@ -97,7 +97,14 @@ export function ActiveCallScreen({
 
   return (
     <div style={overlay}>
-      <div style={{ ...card, width: isVideo ? 520 : 300 }}>
+      <div
+        style={{
+          ...card,
+          width: isVideo ? "95vw" : 300,
+          maxWidth: isVideo ? 1100 : 300,
+          maxHeight: isVideo ? "90vh" : undefined,
+        }}
+      >
         {/* ── Video layout ── */}
         {isVideo && (
           <div
@@ -107,7 +114,8 @@ export function ActiveCallScreen({
               borderRadius: 12,
               marginBottom: 16,
               overflow: "hidden",
-              minHeight: 260,
+              minHeight: "58vh",
+              maxHeight: "70vh",
             }}
           >
             {/* Remote video (full) */}
@@ -115,8 +123,10 @@ export function ActiveCallScreen({
               ref={remoteVideoRef}
               autoPlay
               playsInline
+              muted
               style={{
                 width: "100%",
+                height: "100%",
                 display: "block",
                 borderRadius: 12,
                 objectFit: "cover",
@@ -133,10 +143,10 @@ export function ActiveCallScreen({
                 position: "absolute",
                 bottom: 10,
                 right: 10,
-                width: 110,
-                height: 78,
-                borderRadius: 8,
-                border: "2px solid rgba(255,255,255,0.2)",
+                width: 140,
+                height: 96,
+                borderRadius: 10,
+                border: "2px solid rgba(255,255,255,0.22)",
                 objectFit: "cover",
                 background: "#111",
               }}

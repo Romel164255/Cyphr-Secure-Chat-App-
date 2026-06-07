@@ -100,7 +100,8 @@ export function useWebRTC({ onCallEnded, onCallRecord } = {}) {
 
       pc.ontrack = (e) => {
         console.log("[WebRTC] ontrack — streams:", e.streams.length);
-        setRemoteStream(e.streams[0] ?? null);
+        const stream = e.streams?.[0] ?? new MediaStream([e.track]);
+        setRemoteStream(stream);
       };
 
       pc.onconnectionstatechange = () => {
