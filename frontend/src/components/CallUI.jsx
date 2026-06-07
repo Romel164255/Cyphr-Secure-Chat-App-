@@ -100,9 +100,13 @@ export function ActiveCallScreen({
       <div
         style={{
           ...card,
-          width: isVideo ? "95vw" : 300,
-          maxWidth: isVideo ? 1100 : 300,
-          maxHeight: isVideo ? "90vh" : undefined,
+          width: isVideo ? "100vw" : 300,
+          maxWidth: isVideo ? "100vw" : 300,
+          height: isVideo ? "100vh" : "auto",
+          maxHeight: isVideo ? "100vh" : undefined,
+          borderRadius: isVideo ? 0 : 20,
+          padding: isVideo ? 0 : "28px 32px",
+          overflow: isVideo ? "hidden" : undefined,
         }}
       >
         {/* ── Video layout ── */}
@@ -111,11 +115,12 @@ export function ActiveCallScreen({
             style={{
               position: "relative",
               background: "#000",
-              borderRadius: 12,
-              marginBottom: 16,
               overflow: "hidden",
-              minHeight: "58vh",
-              maxHeight: "70vh",
+              flex: 1,
+              display: "flex",
+              minHeight: 0,
+              justifyContent: "stretch",
+              alignItems: "stretch",
             }}
           >
             {/* Remote video (full) */}
@@ -128,7 +133,6 @@ export function ActiveCallScreen({
                 width: "100%",
                 height: "100%",
                 display: "block",
-                borderRadius: 12,
                 objectFit: "cover",
                 background: "#000",
               }}
@@ -141,8 +145,8 @@ export function ActiveCallScreen({
               muted
               style={{
                 position: "absolute",
-                bottom: 10,
-                right: 10,
+                bottom: 14,
+                right: 14,
                 width: 140,
                 height: 96,
                 borderRadius: 10,
@@ -165,20 +169,22 @@ export function ActiveCallScreen({
           style={{ display: "none" }}
         />
 
-        <p style={{ margin: "0 0 4px", fontWeight: 700, fontSize: 17 }}>
-          {callerName}
-        </p>
-        <p style={{ margin: "0 0 20px", fontSize: 12, color: "#aaa" }}>
-          {isVideo ? "Video call" : "Voice call"} in progress…
-        </p>
+        <div style={{ padding: isVideo ? "22px 24px" : undefined }}>
+          <p style={{ margin: "0 0 4px", fontWeight: 700, fontSize: 17 }}>
+            {callerName}
+          </p>
+          <p style={{ margin: "0 0 20px", fontSize: 12, color: "#aaa" }}>
+            {isVideo ? "Video call" : "Voice call"} in progress…
+          </p>
 
-        <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
-          <button onClick={onToggleMute} style={btnGray}>
-            {isMuted ? "🔇 Unmute" : "🎙 Mute"}
-          </button>
-          <button onClick={onEnd} style={btnRed}>
-            ✕ End
-          </button>
+          <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
+            <button onClick={onToggleMute} style={btnGray}>
+              {isMuted ? "🔇 Unmute" : "🎙 Mute"}
+            </button>
+            <button onClick={onEnd} style={btnRed}>
+              ✕ End
+            </button>
+          </div>
         </div>
       </div>
     </div>
