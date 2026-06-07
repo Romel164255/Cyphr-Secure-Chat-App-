@@ -1,9 +1,6 @@
 import { useRef, useState, useCallback } from "react";
 import { getSocket } from "../services/socket";
 
-// STUN = discovers public IP (free, works ~60% of the time)
-// TURN = relays traffic when direct connection fails (critical for India/mobile networks)
-// These are free public TURN servers from Open Relay (metered.ca)
 const ICE_CONFIG = {
   iceServers: [
     { urls: "stun:stun.l.google.com:19302" },
@@ -32,13 +29,15 @@ export function useWebRTC({ onCallEnded, onCallRecord } = {}) {
   const pcRef = useRef(null);
   const localStreamRef = useRef(null);
   const pendingOfferRef = useRef(null);
-  const iceCandidateBuffer = useRef([]); // buffer candidates until remote desc is set
+  const iceCandidateBuffer = useRef([]);
   const isInitiatorRef = useRef(false);
   const callStartRef = useRef(null);
   const callTypeRef = useRef("audio");
-  const remoteUserIdRef = useRef(null); // stable ref for async callbacks
+  const remoteUserIdRef = useRef(null);
 
   const [remoteStream, setRemoteStream] = useState(null);
+  // FIX 3: track localStream in state so ChatWindow re-renders when stream arrives
+  const [localStream, setLocalStream] = useState(null);
   const [callState, setCallState] = useState("idle");
   const [callType, setCallType] = useState("audio");
   const [remoteUserId, setRemoteUserId] = useState(null);
@@ -48,7 +47,6 @@ export function useWebRTC({ onCallEnded, onCallRecord } = {}) {
     return Math.round((Date.now() - callStartRef.current) / 1000);
   }
 
-  /* ── Flush buffered ICE candidates once remote desc is set ── */
   async function flushIceCandidates(pc) {
     const buffered = iceCandidateBuffer.current.splice(0);
     for (const candidate of buffered) {
@@ -68,6 +66,7 @@ export function useWebRTC({ onCallEnded, onCallRecord } = {}) {
     isInitiatorRef.current = false;
     callStartRef.current = null;
     remoteUserIdRef.current = null;
+    setLocalStream(null);
     setRemoteStream(null);
     setCallState("idle");
     setRemoteUserId(null);
@@ -78,7 +77,6 @@ export function useWebRTC({ onCallEnded, onCallRecord } = {}) {
       const pc = new RTCPeerConnection(ICE_CONFIG);
       pcRef.current = pc;
 
-      // Ensure robust negotiation in Unified Plan mode
       pc.addTransceiver("audio", { direction: "sendrecv" });
       if (type === "video") {
         pc.addTransceiver("video", { direction: "sendrecv" });
@@ -93,7 +91,6 @@ export function useWebRTC({ onCallEnded, onCallRecord } = {}) {
         }
       };
 
-      // Log ICE state for debugging
       pc.oniceconnectionstatechange = () => {
         console.log("[WebRTC] ICE state:", pc.iceConnectionState);
       };
@@ -106,7 +103,8 @@ export function useWebRTC({ onCallEnded, onCallRecord } = {}) {
 
       pc.onconnectionstatechange = () => {
         console.log("[WebRTC] connection state:", pc.connectionState);
-        if (["disconnected", "failed", "closed"].includes(pc.connectionState)) {
+        // FIX 1: "disconnected" is transient — only treat "failed" and "closed" as terminal
+        if (["failed", "closed"].includes(pc.connectionState)) {
           const dur = getDuration();
           onCallRecord?.(
             callTypeRef.current,
@@ -124,7 +122,6 @@ export function useWebRTC({ onCallEnded, onCallRecord } = {}) {
     [cleanup, onCallEnded, onCallRecord],
   );
 
-  /* ── Outgoing call ── */
   const startCall = useCallback(
     async (targetId, type = "audio") => {
       if (!targetId) return;
@@ -153,6 +150,8 @@ export function useWebRTC({ onCallEnded, onCallRecord } = {}) {
               : false,
         });
         localStreamRef.current = stream;
+        // FIX 3: update state so the stream propagates to ChatWindow
+        setLocalStream(stream);
         const pc = createPC(targetId, type);
         stream.getTracks().forEach((track) => pc.addTrack(track, stream));
         const offer = await pc.createOffer({
@@ -173,11 +172,10 @@ export function useWebRTC({ onCallEnded, onCallRecord } = {}) {
     [createPC, cleanup],
   );
 
-  /* ── Incoming offer — just store it, don't create PC yet ── */
   const handleIncomingOffer = useCallback(
     ({ fromUserId, offer, callType: type }) => {
       pendingOfferRef.current = offer;
-      iceCandidateBuffer.current = []; // reset buffer for new call
+      iceCandidateBuffer.current = [];
       callTypeRef.current = type ?? "audio";
       remoteUserIdRef.current = fromUserId;
       setRemoteUserId(fromUserId);
@@ -187,7 +185,6 @@ export function useWebRTC({ onCallEnded, onCallRecord } = {}) {
     [],
   );
 
-  /* ── Accept call: create PC, set remote desc, THEN flush buffered candidates ── */
   const acceptCall = useCallback(async () => {
     const pending = pendingOfferRef.current;
     const targetId = remoteUserIdRef.current;
@@ -214,18 +211,17 @@ export function useWebRTC({ onCallEnded, onCallRecord } = {}) {
             : false,
       });
       localStreamRef.current = stream;
+      // FIX 3: update state so the stream propagates to ChatWindow
+      setLocalStream(stream);
 
       const pc = createPC(targetId, type);
       stream.getTracks().forEach((track) => pc.addTrack(track, stream));
 
-      // 1. Set remote description (the offer)
       await pc.setRemoteDescription(new RTCSessionDescription(pending));
-      pendingOfferRef.current = null; // mark as consumed
+      pendingOfferRef.current = null;
 
-      // 2. Flush any ICE candidates that arrived before we accepted
       await flushIceCandidates(pc);
 
-      // 3. Create and send answer
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
       getSocket()?.emit("webrtc_answer", { targetUserId: targetId, answer });
@@ -238,14 +234,12 @@ export function useWebRTC({ onCallEnded, onCallRecord } = {}) {
     }
   }, [createPC, cleanup]);
 
-  /* ── Answer received (caller side) ── */
   const handleAnswer = useCallback(async ({ answer }) => {
     if (!pcRef.current) return;
     try {
       await pcRef.current.setRemoteDescription(
         new RTCSessionDescription(answer),
       );
-      // Flush any candidates that arrived before we got the answer
       await flushIceCandidates(pcRef.current);
       callStartRef.current = Date.now();
       setCallState("active");
@@ -254,19 +248,14 @@ export function useWebRTC({ onCallEnded, onCallRecord } = {}) {
     }
   }, []);
 
-  /* ── ICE candidate ── 
-     If remote desc not yet set → buffer it.
-     If PC is ready → add immediately. ── */
   const handleIceCandidate = useCallback(async ({ candidate }) => {
     if (!candidate) return;
 
-    // PC doesn't exist yet OR we're waiting for user to accept → buffer
     if (!pcRef.current || pendingOfferRef.current) {
       iceCandidateBuffer.current.push(candidate);
       return;
     }
 
-    // Remote desc might not be set yet (race between answer and candidates)
     if (
       pcRef.current.remoteDescription &&
       pcRef.current.remoteDescription.type
@@ -279,7 +268,6 @@ export function useWebRTC({ onCallEnded, onCallRecord } = {}) {
     }
   }, []);
 
-  /* ── Reject ── */
   const rejectCall = useCallback(() => {
     getSocket()?.emit("webrtc_reject", {
       targetUserId: remoteUserIdRef.current,
@@ -288,7 +276,6 @@ export function useWebRTC({ onCallEnded, onCallRecord } = {}) {
     cleanup();
   }, [cleanup, onCallRecord]);
 
-  /* ── End call ── */
   const endCall = useCallback(() => {
     const dur = getDuration();
     const wasActive = callStartRef.current !== null;
@@ -304,7 +291,6 @@ export function useWebRTC({ onCallEnded, onCallRecord } = {}) {
     onCallEnded?.();
   }, [cleanup, onCallEnded, onCallRecord]);
 
-  /* ── Remote ended ── */
   const handleRemoteEnd = useCallback(() => {
     const dur = getDuration();
     const wasActive = callStartRef.current !== null;
@@ -319,7 +305,6 @@ export function useWebRTC({ onCallEnded, onCallRecord } = {}) {
     onCallEnded?.();
   }, [cleanup, onCallEnded, onCallRecord]);
 
-  /* ── Remote rejected ── */
   const handleRemoteReject = useCallback(() => {
     onCallRecord?.(callTypeRef.current, "declined", 0, isInitiatorRef.current);
     cleanup();
@@ -330,7 +315,7 @@ export function useWebRTC({ onCallEnded, onCallRecord } = {}) {
     callState,
     callType,
     remoteUserId,
-    localStream: localStreamRef.current,
+    localStream, // FIX 3: now a state value, not a ref snapshot
     remoteStream,
     startCall,
     acceptCall,

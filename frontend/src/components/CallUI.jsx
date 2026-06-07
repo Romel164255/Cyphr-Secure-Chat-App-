@@ -50,23 +50,18 @@ export function ActiveCallScreen({
 }) {
   const remoteVideoRef = useRef(null);
   const localVideoRef = useRef(null);
-  // Audio element is ALWAYS in the DOM — voice calls need it; video calls also have audio tracks
   const remoteAudioRef = useRef(null);
 
-  /* Attach remote stream to video element (video calls) */
   useEffect(() => {
     const el = remoteVideoRef.current;
     if (!el) return;
     if (remoteStream) {
       el.srcObject = remoteStream;
-      el.play().catch(() => {}); // autoplay policy
+      el.play().catch(() => {});
     }
-    return () => {
-      if (el) el.srcObject = null;
-    };
+    return () => { if (el) el.srcObject = null; };
   }, [remoteStream]);
 
-  /* Attach local stream to small preview (video calls) */
   useEffect(() => {
     const el = localVideoRef.current;
     if (!el) return;
@@ -74,13 +69,9 @@ export function ActiveCallScreen({
       el.srcObject = localStream;
       el.play().catch(() => {});
     }
-    return () => {
-      if (el) el.srcObject = null;
-    };
+    return () => { if (el) el.srcObject = null; };
   }, [localStream]);
 
-  /* Attach remote stream to audio element — covers voice calls AND the audio
-     track of video calls when the browser doesn't auto-play video audio */
   useEffect(() => {
     const el = remoteAudioRef.current;
     if (!el) return;
@@ -88,42 +79,42 @@ export function ActiveCallScreen({
       el.srcObject = remoteStream;
       el.play().catch(() => {});
     }
-    return () => {
-      if (el) el.srcObject = null;
-    };
+    return () => { if (el) el.srcObject = null; };
   }, [remoteStream]);
 
   const isVideo = callType === "video";
 
   return (
-    <div style={overlay}>
+    // FIX 2: overlay uses alignItems stretch so the card fills the full viewport height
+    <div style={{ ...overlay, alignItems: isVideo ? "stretch" : "center" }}>
+      {/* FIX 2: card is a flex column that fills 100% of the overlay when video */}
       <div
         style={{
           ...card,
           width: isVideo ? "100vw" : 300,
           maxWidth: isVideo ? "100vw" : 300,
           height: isVideo ? "100vh" : "auto",
-          maxHeight: isVideo ? "100vh" : undefined,
           borderRadius: isVideo ? 0 : 20,
           padding: isVideo ? 0 : "28px 32px",
-          overflow: isVideo ? "hidden" : undefined,
+          overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
         }}
       >
         {/* ── Video layout ── */}
         {isVideo && (
+          // FIX 2: flex:1 + minHeight:0 lets the video div grow to fill remaining space
           <div
             style={{
               position: "relative",
               background: "#000",
-              overflow: "hidden",
               flex: 1,
-              display: "flex",
               minHeight: 0,
-              justifyContent: "stretch",
+              display: "flex",
               alignItems: "stretch",
             }}
           >
-            {/* Remote video (full) */}
+            {/* Remote video — fills the full container */}
             <video
               ref={remoteVideoRef}
               autoPlay
@@ -137,7 +128,7 @@ export function ActiveCallScreen({
                 background: "#000",
               }}
             />
-            {/* Local video (pip) */}
+            {/* Local video — PiP in corner */}
             <video
               ref={localVideoRef}
               autoPlay
@@ -145,7 +136,7 @@ export function ActiveCallScreen({
               muted
               style={{
                 position: "absolute",
-                bottom: 14,
+                bottom: 80,
                 right: 14,
                 width: 140,
                 height: 96,
@@ -161,7 +152,7 @@ export function ActiveCallScreen({
         {/* ── Audio layout ── */}
         {!isVideo && <div style={{ fontSize: 60, marginBottom: 16 }}>📞</div>}
 
-        {/* Hidden audio element — always present so ref is ready when stream arrives */}
+        {/* Hidden audio element — always present */}
         <audio
           ref={remoteAudioRef}
           autoPlay
@@ -169,11 +160,18 @@ export function ActiveCallScreen({
           style={{ display: "none" }}
         />
 
-        <div style={{ padding: isVideo ? "22px 24px" : undefined }}>
+        {/* Controls bar — sits below the video, never overlaps */}
+        <div
+          style={{
+            padding: isVideo ? "14px 24px 20px" : undefined,
+            background: isVideo ? "rgba(0,0,0,0.72)" : undefined,
+            flexShrink: 0,
+          }}
+        >
           <p style={{ margin: "0 0 4px", fontWeight: 700, fontSize: 17 }}>
             {callerName}
           </p>
-          <p style={{ margin: "0 0 20px", fontSize: 12, color: "#aaa" }}>
+          <p style={{ margin: "0 0 16px", fontSize: 12, color: "#aaa" }}>
             {isVideo ? "Video call" : "Voice call"} in progress…
           </p>
 
